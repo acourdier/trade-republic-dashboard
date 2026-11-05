@@ -1,0 +1,63 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Portfolio{% endblock %} · Trade Republic</title>
+  <link rel="preload" href="{% static 'ui/fonts/inter-latin-wght-normal.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{% static 'ui/css/app.css' %}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23c53d2b'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <a class="brand" href="{% url 'overview' %}" aria-label="Overview">
+        <span class="seal" aria-hidden="true">TR</span>
+        <span class="brand-name">Portfolio</span>
+      </a>
+      <nav class="nav" aria-label="Main">
+        {% for name, label in nav %}
+          <a href="{% url name %}"{% if nav_current == name %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </nav>
+      <div class="sync">
+        {% if last_sync %}
+          <span class="stale" data-age="{{ sync_age }}" title="{{ last_sync.finished_at }}">Synced {{ last_sync.finished_at|timesince }} ago</span>
+        {% else %}
+          <span class="stale">Never synced</span>
+        {% endif %}
+        {% if has_credentials %}
+          <button class="btn" type="button" data-sync="incremental">Sync</button>
+        {% else %}
+          <a class="btn" href="{% url 'settings' %}">Connect</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="foot">
+    Personal use only · data stays on this computer
+  </footer>
+
+  <dialog class="sync-dialog" id="sync-dialog" aria-live="polite"{% if active_run %} data-active="{{ active_run.pk }}"{% endif %}>
+    {% csrf_token %}
+    <h3 class="s-title"></h3>
+    <p class="s-text"></p>
+    <p class="s-stage muted"></p>
+    <div class="countdown" hidden></div>
+    <div class="progress" hidden><i></i></div>
+    <div class="dialog-actions">
+      <button class="btn ghost s-close" type="button">Close</button>
+      <button class="btn s-retry" type="button" hidden>Try again</button>
+    </div>
+  </dialog>
+
+  <script src="{% static 'ui/vendor/chart.umd.min.js' %}"></script>
+  <script src="{% static 'ui/js/charts.js' %}"></script>
+  <script src="{% static 'ui/js/app.js' %}"></script>
+</body>
+</html>

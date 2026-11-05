@@ -1,0 +1,13 @@
+# Runtime state: database, secrets, documents, logs
+data/
+legacy/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+staticfiles/
+.DS_Store
+.idea/
+.vscode/
+*.swp

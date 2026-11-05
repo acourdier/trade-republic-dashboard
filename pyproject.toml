@@ -1,0 +1,31 @@
+[project]
+name = "trdash"
+version = "2.0.0"
+description = "Personal Trade Republic portfolio dashboard (Django + SQLite)"
+requires-python = ">=3.13"
+license = { file = "LICENSE" }
+dependencies = [
+    "Django>=6.1,<6.3",
+    "waitress>=3.0",
+    # Pinned commit: the name is unregistered on PyPI, never install it from there.
+    "tr-api[browser] @ git+https://github.com/cdamken/tr-api@4441a8b961d616359231e39ed2ff34a62e999056",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-django>=4.9", "ruff>=0.8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "trdash.settings"
+python_files = ["tests.py", "test_*.py"]
+testpaths = ["broker", "portfolio", "ui"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["legacy", "*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]

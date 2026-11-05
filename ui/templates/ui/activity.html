@@ -1,0 +1,39 @@
+{% extends "ui/base.html" %}{% load fmt %}
+{% block title %}Activity{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Activity</h1>
+  <p>Every trade, transfer, payment and card purchase on the account.</p>
+</div>
+<form class="filters" method="get">
+  <select name="group" aria-label="Type" onchange="this.form.submit()">
+    <option value="">All types</option>
+    {% for g in groups %}<option value="{{ g }}"{% if g == group %} selected{% endif %}>{{ g|capfirst }}</option>{% endfor %}
+  </select>
+  <select name="month" aria-label="Month" onchange="this.form.submit()">
+    <option value="">Any month</option>
+    {% for m in months %}<option value="{{ m }}"{% if m == month %} selected{% endif %}>{{ m }}</option>{% endfor %}
+  </select>
+  <input type="search" name="q" value="{{ q }}" placeholder="Search name or ISIN" aria-label="Search">
+  <span class="muted" style="font-size: 13px">{{ count }} event{{ count|pluralize }}</span>
+  <a class="btn ghost" style="margin-left: auto" href="?{{ qs_params }}{% if qs_params %}&amp;{% endif %}format=csv">Export CSV</a>
+</form>
+{% if totals %}
+<div class="legend" style="margin-bottom: 28px">
+  {% for label, total in totals|slice:":6" %}<span class="key">{{ label }} <span class="num">{{ total|signed_eur:0 }}</span></span>{% endfor %}
+</div>
+{% endif %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="num">Amount</th></tr></thead>
+  <tbody>{% include "ui/partials/tx_rows.html" with txs=page.object_list link=True %}</tbody>
+</table>
+</div>
+{% if page.paginator.num_pages > 1 %}
+<div class="pager">
+  {% if page.has_previous %}<a href="?{{ qs_params }}&amp;page={{ page.previous_page_number }}">← Newer</a>{% endif %}
+  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a href="?{{ qs_params }}&amp;page={{ page.next_page_number }}">Older →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

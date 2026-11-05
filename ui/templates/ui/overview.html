@@ -1,0 +1,99 @@
+{% extends "ui/base.html" %}{% load fmt %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+{% if not has_data %}
+  <div class="page-head">
+    <h1>Welcome</h1>
+    <p>Connect your Trade Republic account to see your portfolio. Your phone number and PIN stay on this computer.</p>
+  </div>
+  <a class="btn" href="{% url 'settings' %}">Connect account</a>
+{% else %}
+<section>
+  <div class="eyebrow">Account value</div>
+  <div class="hero" style="margin-top: 14px">
+    <div>
+      <div class="hero-value">{{ o.total|eur }}</div>
+      <div class="hero-sub">{{ o.depot_value|eur0 }} invested · {{ o.cash|eur0 }} cash</div>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Unrealised P&amp;L</div>
+      <div class="value {{ o.depot_pl|tone }}">{{ o.depot_pl|signed_eur:0 }}</div>
+      <div class="delta muted">{{ o.depot_pl_pct|signed_pct }} on {{ o.depot_cost|eur0 }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Lifetime P&amp;L</div>
+      <div class="value {{ cf.lifetime_pl|tone }}">{{ cf.lifetime_pl|signed_eur:0 }}</div>
+      <div class="delta muted">{{ cf.lifetime_pl_pct|signed_pct }} on {{ cf.net_capital_in|eur0 }} committed</div>
+    </div>
+    <div class="stat">
+      <div class="label">Annualised return</div>
+      <div class="value">{{ o.xirr|signed_pct }}</div>
+      <div class="delta muted">money-weighted (XIRR)</div>
+    </div>
+    <div class="stat">
+      <div class="label">Income, last 12 months</div>
+      <div class="value">{{ o.income.last_12m|eur0 }}</div>
+      <div class="delta muted">{{ o.income.total|eur0 }} all time</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Allocation</h2>
+    <span class="aside">{{ o.positions|length }} position{{ o.positions|length|pluralize }}</span>
+  </div>
+  {% include "ui/partials/segbar.html" with items=o.allocation.by_class %}
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>History</h2>
+    <div class="ranges" id="nw-ranges">
+      <button type="button" data-days="90" aria-pressed="false">3M</button>
+      <button type="button" data-days="365" aria-pressed="false">1Y</button>
+      <button type="button" data-days="1095" aria-pressed="false">3Y</button>
+      <button type="button" data-days="0" aria-pressed="true">All</button>
+    </div>
+  </div>
+  <div class="legend" style="margin-bottom: 16px">
+    <span class="key"><i class="swatch" style="background: var(--s1)"></i>Invested capital (buys − sells)</span>
+    <span class="key"><i class="line" style="background: var(--ink)"></i>Account value, recorded at each sync</span>
+  </div>
+  <div class="chart"><canvas data-chart="line" data-source="nw-data" aria-label="Invested capital and account value over time"></canvas></div>
+  {{ chart|json_script:"nw-data" }}
+</section>
+
+<div class="grid-2" style="margin-top: 72px">
+  <section style="margin-top: 0">
+    <div class="section-head"><h2>Leading</h2><a class="aside" href="{% url 'positions' %}?sort=pl">All positions</a></div>
+    <table>
+      <tbody>
+      {% for p in o.contributors.top %}
+        <tr><td><a href="{% url 'position' p.isin %}">{{ p.name }}</a></td><td class="num gain">{{ p.pl|signed_eur:0 }}</td><td class="num muted">{{ p.pl_pct|signed_pct }}</td></tr>
+      {% empty %}<tr><td class="empty">No positions in profit.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+  <section style="margin-top: 0">
+    <div class="section-head"><h2>Lagging</h2></div>
+    <table>
+      <tbody>
+      {% for p in o.contributors.bottom %}
+        <tr><td><a href="{% url 'position' p.isin %}">{{ p.name }}</a></td><td class="num loss">{{ p.pl|signed_eur:0 }}</td><td class="num muted">{{ p.pl_pct|signed_pct }}</td></tr>
+      {% empty %}<tr><td class="empty">No positions at a loss.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<section>
+  <div class="section-head"><h2>Recent activity</h2><a class="aside" href="{% url 'activity' %}">All activity</a></div>
+  <div class="table-wrap"><table><tbody>
+    {% include "ui/partials/tx_rows.html" with txs=recent link=True %}
+  </tbody></table></div>
+</section>
+{% endif %}
+{% endblock %}

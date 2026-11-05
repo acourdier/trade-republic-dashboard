@@ -1,0 +1,56 @@
+{% extends "ui/base.html" %}{% load fmt %}
+{% block title %}Income{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Income</h1>
+  <p>Dividends, bond coupons and interest paid into the account.</p>
+</div>
+<section>
+  <div class="eyebrow">Received in total</div>
+  <div class="hero" style="margin-top: 14px"><div>
+    <div class="hero-value">{{ inc.total|eur }}</div>
+    <div class="hero-sub">{{ inc.dividends_total|eur0 }} dividends · {{ inc.interest_total|eur0 }} interest</div>
+  </div></div>
+  <div class="stats">
+    <div class="stat"><div class="label">Last 12 months</div><div class="value">{{ inc.last_12m|eur0 }}</div></div>
+    <div class="stat"><div class="label">Next 12 months, estimated</div><div class="value">{{ inc.forward_12m|eur0 }}</div>
+      <div class="delta muted">{% if inc.forward_12m %}from {{ inc.forward_payments }} dividends over {{ inc.forward_basis_days }} days{% else %}needs 90+ days of dividends{% endif %}</div></div>
+    <div class="stat"><div class="label">Yield on cost</div><div class="value">{{ inc.yield_on_cost|pct:2 }}</div>
+      <div class="delta muted">estimate ÷ cost of current holdings</div></div>
+    <div class="stat"><div class="label">Payments</div><div class="value">{{ inc.payments|length }}</div>
+      <div class="delta muted">from {{ inc.by_issuer|length }} source{{ inc.by_issuer|length|pluralize }}</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head"><h2>By month</h2></div>
+  <div class="legend" style="margin-bottom: 16px">
+    <span class="key"><i class="swatch" style="background: var(--s1)"></i>Dividends</span>
+    <span class="key"><i class="swatch" style="background: var(--s2)"></i>Interest</span>
+  </div>
+  <div class="chart short"><canvas data-chart="bar" data-source="inc-data" aria-label="Income per month"></canvas></div>
+  {{ chart|json_script:"inc-data" }}
+  <details class="table-view"><summary>By year</summary><div class="table-wrap"><table>
+    <thead><tr><th>Year</th><th class="num">Dividends</th><th class="num">Interest</th><th class="num">Total</th></tr></thead>
+    <tbody>{% for y, v in by_year %}<tr><td class="num">{{ y }}</td><td class="num">{{ v.dividend|eur }}</td><td class="num">{{ v.interest|eur }}</td><td class="num">{{ v.total|eur }}</td></tr>{% endfor %}</tbody>
+  </table></div></details>
+</section>
+
+<div class="grid-2" style="margin-top: 72px">
+  <section style="margin-top: 0">
+    <div class="section-head"><h2>By source</h2></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Source</th><th class="num">Payments</th><th class="num">Total</th></tr></thead>
+      <tbody>{% for b in inc.by_issuer|slice:":25" %}
+        <tr><td>{% if b.isin %}<a href="{% url 'position' b.isin %}">{{ b.name }}</a>{% else %}{{ b.name }}{% endif %}<br><small class="muted">{{ b.first|date:"M Y" }} – {{ b.last|date:"M Y" }}</small></td><td class="num muted">{{ b.count }}</td><td class="num">{{ b.total|eur }}</td></tr>
+      {% empty %}<tr><td class="empty">No income yet.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  <section style="margin-top: 0">
+    <div class="section-head"><h2>Recent payments</h2><a class="aside" href="{% url 'activity' %}?group=income">All</a></div>
+    <div class="table-wrap"><table><tbody>{% for p in payments|slice:":15" %}
+      <tr><td class="date">{{ p.day|date:"j M Y" }}</td><td>{{ p.name }}</td><td class="num">{{ p.amount|eur }}</td></tr>
+    {% endfor %}</tbody></table></div>
+  </section>
+</div>
+{% endblock %}

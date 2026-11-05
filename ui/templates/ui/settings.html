@@ -1,0 +1,80 @@
+{% extends "ui/base.html" %}{% load fmt %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Settings</h1>
+  <p>Account connection, syncing and your local data.</p>
+</div>
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+<div class="grid-2">
+  <section>
+    <div class="section-head"><h2>Trade Republic account</h2></div>
+    {% if creds %}<p>Connected as <span class="num">{{ masked_phone }}</span>.</p>{% endif %}
+    <form class="stack" method="post" autocomplete="off">
+      {% csrf_token %}
+      <label class="field">Phone number
+        <input type="tel" name="phone" placeholder="+4915112345678" value="{{ creds.phone|default:'' }}" required>
+      </label>
+      <label class="field">PIN
+        <input type="password" name="pin" inputmode="numeric" placeholder="{% if creds %}•••• (unchanged){% else %}4 digits{% endif %}" {% if not creds %}required{% endif %}>
+      </label>
+      <div><button class="btn" type="submit">{% if creds %}Update{% else %}Connect{% endif %}</button></div>
+    </form>
+    <p class="note" style="margin-top: 20px">Stored only on this computer, readable by you alone. When you sync, Trade Republic asks you to approve the login in its app. Changing the phone number clears all data from the previous account.</p>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Data</h2></div>
+    <dl class="facts">
+      <dt>Events</dt><dd class="num">{{ tx_count }}{% if first_tx %} since {{ first_tx|date:"M Y" }}{% endif %}</dd>
+      <dt>Snapshots</dt><dd class="num">{{ snap_count }}</dd>
+      <dt>Documents</dt><dd class="num">{{ docs_count }}</dd>
+      <dt>Database</dt><dd><code style="font-size: 12px">{{ db_path }}</code></dd>
+    </dl>
+    {% if creds %}
+    <div class="filters" style="margin-top: 28px">
+      <button class="btn ghost" type="button" data-sync="full">Full resync</button>
+      <button class="btn ghost" type="button" data-sync="documents">Download documents</button>
+    </div>
+    <p class="note">A full resync reloads the whole history. Downloading every PDF can take several minutes; files go to <code style="font-size: 12px">{{ documents_dir }}</code>.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section>
+  <div class="section-head"><h2>Sync history</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Started</th><th>Kind</th><th>Result</th><th class="num">Duration</th></tr></thead>
+    <tbody>{% for r in runs %}
+      <tr>
+        <td class="date">{{ r.created_at|date:"j M Y, H:i" }}</td>
+        <td>{{ r.get_mode_display }}</td>
+        <td>{% if r.status == "done" %}<span class="kind" style="--k: var(--gain)">Done</span> <small class="muted">{{ r.counts.positions|default_if_none:"" }}{% if r.counts.positions is not None %} positions{% endif %}{% if r.counts.stored is not None %} · {{ r.counts.stored }} events{% endif %}{% if r.counts.indexed is not None %} · {{ r.counts.indexed }} documents{% endif %}</small>
+            {% elif r.status == "failed" %}<span class="kind" style="--k: var(--loss)">Failed</span> <small class="muted">{{ r.message|truncatechars:120 }}</small>
+            {% else %}<span class="kind">{{ r.get_status_display }}</span> <small class="muted">{{ r.stage }}</small>{% endif %}</td>
+        <td class="num muted">{% if r.duration %}{{ r.duration.total_seconds|floatformat:0 }} s{% endif %}</td>
+      </tr>
+    {% empty %}<tr><td colspan="4" class="empty">No syncs yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+{% if docs %}
+<section>
+  <div class="section-head"><h2>Latest documents</h2></div>
+  <table><tbody>{% for doc in docs %}
+    <tr><td class="date">{{ doc.date|date:"j M Y" }}</td><td><a href="{% url 'document' doc.pk %}">{{ doc.title|default:doc.kind }}</a></td><td class="muted">{{ doc.kind }}</td></tr>
+  {% endfor %}</tbody></table>
+</section>
+{% endif %}
+
+<section>
+  <div class="section-head"><h2>Reset</h2></div>
+  <form method="post" action="{% url 'reset' %}" class="filters" onsubmit="return confirm('Delete all local data, credentials and documents?')">
+    {% csrf_token %}
+    <input type="text" name="confirm" placeholder="type delete" aria-label="Type delete to confirm" autocomplete="off">
+    <button class="btn danger" type="submit">Delete everything</button>
+  </form>
+  <p class="note">Removes the credentials, the Trade Republic session, every synced record and the downloaded documents from this computer.</p>
+</section>
+{% endblock %}

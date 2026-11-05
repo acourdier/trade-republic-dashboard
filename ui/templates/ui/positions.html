@@ -1,0 +1,51 @@
+{% extends "ui/base.html" %}{% load fmt %}
+{% block title %}Positions{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Positions</h1>
+  <p>{{ o.positions|length }} holding{{ o.positions|length|pluralize }} worth {{ o.depot_value|eur0 }}{% if o.snapshot %}, priced {{ o.snapshot.taken_at|date:"j M Y, H:i" }}{% endif %}.</p>
+</div>
+{% if groups %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th><a href="?sort=name"{% if sort == "name" %} aria-sort="ascending"{% endif %}>Name</a></th>
+      <th class="num hide-sm">Quantity</th>
+      <th class="num hide-sm">Avg cost</th>
+      <th class="num hide-sm">Price</th>
+      <th class="num"><a href="?sort=value"{% if sort == "value" %} aria-sort="descending"{% endif %}>Value</a></th>
+      <th class="num"><a href="?sort=pl"{% if sort == "pl" %} aria-sort="descending"{% endif %}>P&amp;L</a></th>
+      <th class="num"><a href="?sort=pl_pct"{% if sort == "pl_pct" %} aria-sort="descending"{% endif %}>%</a></th>
+      <th class="num hide-sm">Weight</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for g in groups %}
+    <tr class="group">
+      <td colspan="4" class="hide-sm">{{ g.label }}</td>
+      <td class="num" style="font-family: var(--sans)">{{ g.value|eur0 }}</td>
+      <td class="num {{ g.pl|tone }}" style="font-family: var(--sans)">{{ g.pl|signed_eur:0 }}</td>
+      <td class="num muted" style="font-family: var(--sans)">{{ g.pl_pct|signed_pct }}</td>
+      <td class="hide-sm"></td>
+    </tr>
+    {% for p in g.rows %}
+    <tr>
+      <td><a class="cell-name" href="{% url 'position' p.isin %}">{{ p.name }}<small>{{ p.isin }}</small></a></td>
+      <td class="num hide-sm">{{ p.quantity|qty:p.asset_class }}</td>
+      <td class="num hide-sm muted">{{ p.avg_cost|eur }}</td>
+      <td class="num hide-sm">{{ p.price|eur }}</td>
+      <td class="num">{{ p.value|eur }}</td>
+      <td class="num {{ p.pl|tone }}">{{ p.pl|signed_eur }}</td>
+      <td class="num {{ p.pl|tone }}">{{ p.pl_pct|signed_pct }}</td>
+      <td class="num hide-sm muted">{{ p.weight|pct }}</td>
+    </tr>
+    {% endfor %}
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+  <p class="empty">No positions in the latest snapshot. Sync to load them.</p>
+{% endif %}
+{% endblock %}

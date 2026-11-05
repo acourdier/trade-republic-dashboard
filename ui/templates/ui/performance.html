@@ -1,0 +1,94 @@
+{% extends "ui/base.html" %}{% load fmt %}
+{% block title %}Performance{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Performance</h1>
+  <p>Money in and out of the account, how it grew, and how it compares with the market.</p>
+</div>
+
+<section>
+  <div class="section-head"><h2>Capital</h2></div>
+  <div class="stats" style="margin-top: 0; padding-top: 0; border-top: 0">
+    <div class="stat"><div class="label">Deposited</div><div class="value">{{ cf.totals.deposits.total|eur0 }}</div><div class="delta muted">{{ cf.totals.deposits.count }} transfer{{ cf.totals.deposits.count|pluralize }} in</div></div>
+    <div class="stat"><div class="label">Withdrawn</div><div class="value">{{ cf.totals.withdrawals.total|eur0 }}</div><div class="delta muted">back to your bank</div></div>
+    <div class="stat"><div class="label">Tax refunds</div><div class="value">{{ cf.totals.tax_refunds.total|eur0 }}</div></div>
+    <div class="stat"><div class="label">Card spending</div><div class="value">{{ cf.totals.card.total|eur0 }}</div><div class="delta muted">{{ cf.totals.card.count }} purchase{{ cf.totals.card.count|pluralize }}</div></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="label">Net capital committed</div><div class="value">{{ cf.net_capital_in|eur0 }}</div><div class="delta muted">deposits + refunds − withdrawals</div></div>
+    <div class="stat"><div class="label">Value today</div><div class="value">{{ cf.current_value|eur0 }}</div><div class="delta muted">positions + cash</div></div>
+    <div class="stat"><div class="label">Lifetime P&amp;L</div><div class="value {{ cf.lifetime_pl|tone }}">{{ cf.lifetime_pl|signed_eur:0 }}</div><div class="delta muted">{{ cf.lifetime_pl_pct|signed_pct }}</div></div>
+    <div class="stat"><div class="label">Annualised (XIRR)</div><div class="value">{{ o.xirr|signed_pct }}</div><div class="delta muted">deposits and withdrawals only</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Against the market</h2>
+    <div class="ranges" id="bench-ranges">
+      <button type="button" data-days="365" aria-pressed="false">1Y</button>
+      <button type="button" data-days="1095" aria-pressed="false">3Y</button>
+      <button type="button" data-days="0" aria-pressed="true">All</button>
+    </div>
+  </div>
+  <p class="note" style="margin: -6px 0 18px">Each time you bought or sold, the same amount is bought or sold in the index fund that day. The lines show what that money would be worth.</p>
+  {% if replays %}
+  <div class="legend" style="margin-bottom: 16px">
+    <span class="key"><i class="line" style="background: var(--ink)"></i>Invested capital</span>
+    {% for r in replays %}<span class="key"><i class="line" style="background: var({{ r.colour }})"></i>{{ r.label }}</span>{% endfor %}
+  </div>
+  <div class="chart tall"><canvas data-chart="line" data-source="bench-data" aria-label="Invested capital replayed into benchmark index funds"></canvas></div>
+  {{ bench_chart|json_script:"bench-data" }}
+  <div class="table-wrap" style="margin-top: 28px"><table>
+    <thead><tr><th>Same money in</th><th class="num">Would be worth</th><th class="num">Your positions today</th><th class="num">Difference</th></tr></thead>
+    <tbody>{% for r in replays %}<tr>
+      <td><span class="kind" style="--k: var({{ r.colour }})">{{ r.label }}</span> <small class="muted">{{ r.symbol }}</small></td>
+      <td class="num">{{ r.value|eur0 }}</td><td class="num">{{ o.depot_value|eur0 }}</td>
+      <td class="num {{ r.diff|tone }}">{{ r.diff|signed_eur:0 }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="note">Prices: Yahoo Finance daily closes{% if bench_updated %}, up to {{ bench_updated|date:"j M Y" }}{% endif %}. Updated at each sync.</p>
+  {% else %}
+  <p class="empty">Benchmark prices load during the next sync.</p>
+  {% endif %}
+</section>
+
+<section>
+  <div class="section-head"><h2>Trading, by month</h2><span class="aside">last 36 months</span></div>
+  <div class="legend" style="margin-bottom: 16px">
+    <span class="key"><i class="swatch" style="background: var(--s1)"></i>Bought</span>
+    <span class="key"><i class="swatch" style="background: var(--s2)"></i>Sold</span>
+  </div>
+  <div class="chart short"><canvas data-chart="bar" data-source="flow-data" aria-label="Amount bought and sold per month"></canvas></div>
+  {{ flow_chart|json_script:"flow-data" }}
+  <details class="table-view"><summary>As a table</summary><div class="table-wrap"><table>
+    <thead><tr><th>Month</th><th class="num">Deposited</th><th class="num">Withdrawn</th><th class="num">Card</th><th class="num">Bought</th><th class="num">Sold</th></tr></thead>
+    <tbody>{% for m in cf.monthly reversed %}<tr><td class="num">{{ m.month }}</td><td class="num">{{ m.deposits|eur0 }}</td><td class="num">{{ m.withdrawals|eur0 }}</td><td class="num">{{ m.card|eur0 }}</td><td class="num">{{ m.buys|eur0 }}</td><td class="num">{{ m.sells|eur0 }}</td></tr>{% endfor %}</tbody>
+  </table></div></details>
+</section>
+
+<div class="grid-2" style="margin-top: 72px">
+  <section style="margin-top: 0">
+    <div class="section-head"><h2>By asset class</h2></div>
+    {% include "ui/partials/segbar.html" with items=o.allocation.by_class %}
+  </section>
+  <section style="margin-top: 0">
+    <div class="section-head"><h2>By domicile</h2><span class="aside">ISIN country</span></div>
+    <table><tbody>{% for c in countries|slice:":10" %}
+      <tr><td>{{ c.name }}</td><td class="num muted">{{ c.pct|pct }}</td><td class="num">{{ c.value|eur0 }}</td></tr>
+    {% empty %}<tr><td class="empty">No positions.</td></tr>{% endfor %}</tbody></table>
+    <p class="note">Where the security is registered, not where the company does business — most ETFs are domiciled in Ireland or Luxembourg.</p>
+  </section>
+</div>
+
+<section>
+  <div class="section-head"><h2>How these are calculated</h2></div>
+  <dl class="facts">
+    <dt>Net capital committed</dt><dd>Deposits plus tax refunds, minus withdrawals to your own bank. Card spending is not subtracted: it is everyday spending, not capital taken back.</dd>
+    <dt>Lifetime P&amp;L</dt><dd>Value today + card spending − net capital committed − dividends and interest received. What the money you committed gained from price changes alone.</dd>
+    <dt>Unrealised P&amp;L</dt><dd>Value of current positions minus their average buy cost, as reported by Trade Republic.</dd>
+    <dt>XIRR</dt><dd>Money-weighted annual return over deposits, withdrawals and today's value. Because the account is also used for card payments, read it next to lifetime P&amp;L.</dd>
+    <dt>Invested capital</dt><dd>Running total of buys minus sells. It is a cost basis, not a market value.</dd>
+    <dt>Forward income</dt><dd>The last 365 days of dividends, scaled to a full year when the history is shorter.</dd>
+  </dl>
+</section>
+{% endblock %}

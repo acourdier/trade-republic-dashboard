@@ -1,0 +1,7 @@
+{% load fmt %}{# items: [{label, value, pct}] #}
+<div class="segbar" role="img" aria-label="{% for a in items %}{{ a.label }} {{ a.pct|pct }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+  {% for a in items %}{% if a.pct >= 0.3 %}<span style="flex: {{ a.pct|stringformat:'.3f' }} 1 0; background: {{ a.label|asset_colour }}" data-label="{{ a.label|asset_label_ink }}" title="{{ a.label }} · {{ a.value|eur0 }} · {{ a.pct|pct }}">{% if a.pct >= 9 %}{{ a.pct|pct:0 }}{% endif %}</span>{% endif %}{% endfor %}
+</div>
+<div class="legend">
+  {% for a in items %}<span class="key"><i class="swatch" style="background: {{ a.label|asset_colour }}"></i>{{ a.label }} <span class="num">{{ a.value|eur0 }}</span></span>{% endfor %}
+</div>

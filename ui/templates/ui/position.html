@@ -1,0 +1,82 @@
+{% extends "ui/base.html" %}{% load fmt %}
+{% block title %}{{ inst.name|default:inst.isin }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="eyebrow"><a href="{% url 'positions' %}">Positions</a> · {{ inst.asset_class }}</div>
+  <h1 style="margin-top: 10px">{{ inst.name|default:inst.isin }}</h1>
+  <p class="num">{{ inst.isin }}{% if inst.exchange %} · {{ inst.exchange }}{% endif %}</p>
+</div>
+
+<section>
+  {% if d.current %}
+  <div class="hero">
+    <div>
+      <div class="hero-value">{{ d.current.value|eur }}</div>
+      <div class="hero-sub">{{ d.current.quantity|qty:inst.asset_class }} × {{ d.current.price|eur }}</div>
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">Not held at the moment.</p>
+  {% endif %}
+  <div class="stats">
+    {% if d.current %}
+    <div class="stat">
+      <div class="label">Unrealised P&amp;L</div>
+      <div class="value {{ d.current.pl|tone }}">{{ d.current.pl|signed_eur }}</div>
+      <div class="delta muted">{{ d.current.pl_pct|signed_pct }} on {{ d.current.cost|eur0 }} · avg {{ d.current.avg_cost|eur }}</div>
+    </div>
+    {% endif %}
+    <div class="stat">
+      <div class="label">Total return</div>
+      <div class="value {{ d.total_return|tone }}">{{ d.total_return|signed_eur }}</div>
+      <div class="delta muted">value + sold + income − bought</div>
+    </div>
+    <div class="stat">
+      <div class="label">Bought / sold</div>
+      <div class="value">{{ d.bought|eur0 }}</div>
+      <div class="delta muted">{{ d.sold|eur0 }} sold · {{ d.trade_count }} trade{{ d.trade_count|pluralize }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Income received</div>
+      <div class="value">{{ d.income|eur }}</div>
+      <div class="delta muted">{% if d.first_trade %}holding since {{ d.first_trade|date:"M Y" }}{% endif %}</div>
+    </div>
+  </div>
+</section>
+
+{% if d.transactions %}
+<section>
+  <div class="section-head">
+    <h2>Over time</h2>
+    <div class="ranges" id="pos-ranges">
+      <button type="button" data-days="365" aria-pressed="false">1Y</button>
+      <button type="button" data-days="0" aria-pressed="true">All</button>
+    </div>
+  </div>
+  <div class="legend" style="margin-bottom: 16px">
+    <span class="key"><i class="swatch" style="background: var(--s1)"></i>Net invested</span>
+    {% if chart.series|length > 1 %}<span class="key"><i class="line" style="background: var(--ink)"></i>Value at each sync</span>{% endif %}
+  </div>
+  <div class="chart short"><canvas data-chart="line" data-source="pos-data" aria-label="Net invested and value over time"></canvas></div>
+  {{ chart|json_script:"pos-data" }}
+</section>
+
+<section>
+  <div class="section-head"><h2>Transactions</h2><a class="aside" href="{% url 'activity' %}?q={{ inst.isin }}&amp;format=csv">Export CSV</a></div>
+  <div class="table-wrap"><table><tbody>
+    {% include "ui/partials/tx_rows.html" with txs=d.transactions %}
+  </tbody></table></div>
+</section>
+{% endif %}
+
+{% if docs %}
+<section>
+  <div class="section-head"><h2>Documents</h2></div>
+  <table><tbody>
+  {% for doc in docs %}
+    <tr><td class="date">{{ doc.date|date:"j M Y" }}</td><td><a href="{% url 'document' doc.pk %}">{{ doc.title|default:doc.kind }}</a></td><td class="muted">{{ doc.kind }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</section>
+{% endif %}
+{% endblock %}

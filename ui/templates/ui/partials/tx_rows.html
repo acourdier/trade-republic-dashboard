@@ -1,0 +1,10 @@
+{% load fmt %}{% for t in txs %}
+<tr>
+  <td class="date">{{ t.timestamp|date:"j M Y" }}</td>
+  <td><span class="kind" style="--k: {{ t.kind|kind_colour }}">{{ t.get_kind_display }}</span></td>
+  <td>{% if t.instrument_id and link %}<a href="{% url 'position' t.instrument_id %}">{{ t.label }}</a>{% else %}{{ t.label }}{% endif %}{% if t.event_subtype and t.event_subtype != t.subtitle %} <small class="muted">· {{ t.event_subtype }}</small>{% endif %}</td>
+  <td class="num">{% if t.amount is not None %}{{ t.amount|signed_eur }}{% endif %}</td>
+</tr>
+{% empty %}
+<tr><td colspan="4" class="empty">Nothing here yet.</td></tr>
+{% endfor %}

@@ -1,0 +1,21 @@
+# docker compose up -d --build   →  http://127.0.0.1:8085/ on the server
+# Settings come from .env next to this file (see .env.example).
+services:
+  trdash:
+    build: .
+    image: trdash:latest
+    container_name: trdash
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TRDASH_PASSWORD: ${TRDASH_PASSWORD:?Set TRDASH_PASSWORD in .env}
+    ports:
+      # Loopback by default: put a TLS reverse proxy (or a VPN/SSH tunnel) in
+      # front. Set TRDASH_BIND=0.0.0.0 only if you know what you're exposing.
+      - "${TRDASH_BIND:-127.0.0.1}:${TRDASH_PUBLISH_PORT:-8085}:8085"
+    volumes:
+      - ./data:/data
+    shm_size: 256mb # Chromium, briefly, at each Trade Republic login

@@ -85,7 +85,6 @@ class TrUnavailable(TrError):
 # Credentials: data/secrets/credentials (line 1 phone E.164, line 2 PIN), 0600
 # ---------------------------------------------------------------------------
 CREDENTIALS_FILE: Path = settings.SECRETS_DIR / "credentials"
-LEGACY_CREDENTIALS_FILE = Path.home() / ".pytr" / "credentials"
 
 
 @dataclass(frozen=True)
@@ -95,15 +94,11 @@ class Credentials:
 
 
 def load_credentials() -> Credentials | None:
-    for path in (CREDENTIALS_FILE, LEGACY_CREDENTIALS_FILE):
-        if not path.is_file():
-            continue
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
-        if len(lines) >= 2 and lines[0].startswith("+") and lines[1].strip():
-            creds = Credentials(lines[0].strip(), lines[1].strip())
-            if path != CREDENTIALS_FILE:  # one-time import from the legacy location
-                save_credentials(creds)
-            return creds
+    if not CREDENTIALS_FILE.is_file():
+        return None
+    lines = CREDENTIALS_FILE.read_text(encoding="utf-8").strip().splitlines()
+    if len(lines) >= 2 and lines[0].startswith("+") and lines[1].strip():
+        return Credentials(lines[0].strip(), lines[1].strip())
     return None
 
 

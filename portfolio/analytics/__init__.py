@@ -45,7 +45,6 @@ class Row:
     day: date
     kind: str
     amount: float  # absolute value, EUR
-    signed: float
     label: str
     isin: str
     name: str
@@ -65,7 +64,6 @@ def load_rows() -> list[Row]:
             day=timezone.localdate(t.timestamp),
             kind=t.kind,
             amount=abs(a),
-            signed=a,
             label=t.label,
             isin=t.instrument_id or "",
             name=(t.instrument.name if t.instrument and t.instrument.name else t.title),

@@ -166,7 +166,14 @@ main {
   margin: 0 auto;
   padding: 56px 24px 96px;
 }
+.login { max-width: 360px; padding-top: 18vh; }
+.login h1 { font: 500 34px/1.2 var(--serif); margin: 20px 0 40px; }
+.login .flash { margin-bottom: 24px; }
 .foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
   max-width: var(--maxw);
   margin: 0 auto;
   padding: 24px 24px 48px;
@@ -368,6 +375,8 @@ form.stack { display: grid; gap: 18px; max-width: 360px; }
 .pager { display: flex; gap: 16px; align-items: center; margin-top: 24px; font-size: 13px; color: var(--ink-3); }
 .flash { padding: 14px 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); margin-bottom: 40px; font-size: 14px; }
 .flash.error { color: var(--loss); }
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.linkish:hover { color: var(--ink); }
 dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 10px 32px; margin: 0; font-size: 14px; }
 dl.facts dt { color: var(--ink-3); }
 dl.facts dd { margin: 0; }

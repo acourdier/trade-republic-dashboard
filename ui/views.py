@@ -1,6 +1,7 @@
 import csv
 import re
 import shutil
+import time
 from collections import defaultdict
 from datetime import timedelta
 
@@ -10,6 +11,7 @@ from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 
 from broker import jobs, tr
@@ -24,6 +26,7 @@ from portfolio.models import (
     PortfolioSnapshot,
     Transaction,
 )
+from ui import middleware as gate
 
 ASSET_ORDER = ["Stocks", "ETFs", "Crypto", "Bonds", "Private markets"]
 COUNTRIES = {
@@ -316,5 +319,35 @@ def sync_status(request, pk):
     # A queued run nobody picks up means the worker isn't running.
     if run.status == SyncRun.Status.QUEUED and timezone.now() - run.created_at > timedelta(
             seconds=20):
-        run.stage = "Waiting for the worker — is the app running with ./run.sh?"
+        run.stage = "Waiting for the worker — is it running (manage.py serve)?"
     return JsonResponse(_run_json(run))
+
+
+# ---------------------------------------------------------------- password gate
+def login(request):
+    if not settings.TRDASH_PASSWORD or gate.is_unlocked(request):
+        return redirect("overview")
+    nxt = request.POST.get("next") or request.GET.get("next") or ""
+    if not url_has_allowed_host_and_scheme(nxt, {request.get_host()}, request.is_secure()):
+        nxt = ""
+    error = ""
+    if request.method == "POST":
+        if gate.check_password(request.POST.get("password", "")):
+            request.session.cycle_key()
+            request.session[gate.SESSION_KEY] = gate.password_fingerprint()
+            return redirect(nxt or "overview")
+        time.sleep(1)  # slow down guessing
+        error = "Wrong password."
+    return render(request, "ui/login.html", {"next": nxt, "error": error},
+                  status=401 if error else 200)
+
+
+@require_POST
+def logout(request):
+    request.session.flush()
+    return redirect("login")
+
+
+@require_GET
+def healthz(request):
+    return HttpResponse("ok", content_type="text/plain")

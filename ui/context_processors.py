@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.utils import timezone
 
 from broker import tr
@@ -32,4 +33,5 @@ def chrome(request):
         "sync_age": age,
         "active_run": active,
         "has_credentials": tr.load_credentials() is not None,
+        "gated": bool(settings.TRDASH_PASSWORD),
     }

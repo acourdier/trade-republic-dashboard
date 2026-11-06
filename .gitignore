@@ -1,6 +1,5 @@
 # Runtime state: database, secrets, documents, logs
 data/
-legacy/
 .venv/
 __pycache__/
 *.pyc
@@ -11,3 +10,5 @@ staticfiles/
 .idea/
 .vscode/
 *.swp
+
+.env

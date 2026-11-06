@@ -14,4 +14,7 @@ urlpatterns = [
     path("documents/<int:pk>/", views.document, name="document"),
     path("sync/", views.sync_start, name="sync_start"),
     path("sync/<int:pk>/", views.sync_status, name="sync_status"),
+    path("login/", views.login, name="login"),
+    path("logout/", views.logout, name="logout"),
+    path("healthz", views.healthz, name="healthz"),
 ]

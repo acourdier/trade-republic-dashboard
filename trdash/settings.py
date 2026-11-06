@@ -1,4 +1,4 @@
-"""Django settings for trdash — a local, single-user Trade Republic dashboard.
+"""Django settings for trdash — a single-user Trade Republic dashboard.
 
 All runtime state lives under DATA_DIR (default ./data, override with
 TRDASH_DATA_DIR): the SQLite database, secrets, downloaded documents, logs.
@@ -30,10 +30,36 @@ def _secret_key() -> str:
 SECRET_KEY = os.environ.get("TRDASH_SECRET_KEY") or _secret_key()
 DEBUG = os.environ.get("TRDASH_DEBUG", "0") == "1"
 
-# Loopback only — the server binds 127.0.0.1, and Host must match.
-ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+
+def _env_list(name: str) -> list[str]:
+    return [v.strip() for v in os.environ.get(name, "").split(",") if v.strip()]
+
+
+# Local by default: the server binds 127.0.0.1. For a server deployment set
+# TRDASH_HOST=0.0.0.0 plus the public hostname(s) and origin(s) below.
+HOST = os.environ.get("TRDASH_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TRDASH_PORT", "8085"))
-CSRF_TRUSTED_ORIGINS = [f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"]
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", *_env_list("TRDASH_ALLOWED_HOSTS")]
+CSRF_TRUSTED_ORIGINS = [
+    f"http://localhost:{PORT}",
+    f"http://127.0.0.1:{PORT}",
+    *_env_list("TRDASH_CSRF_TRUSTED_ORIGINS"),  # e.g. https://tr.example.com
+]
+
+# Behind a TLS-terminating reverse proxy (Caddy, nginx, Traefik).
+# The proxy must be the only thing that can reach the port.
+BEHIND_PROXY = os.environ.get("TRDASH_BEHIND_PROXY", "0") == "1"
+if BEHIND_PROXY:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
+
+# Password gate. Unset = open (fine on loopback); always set it on a server.
+TRDASH_PASSWORD = os.environ.get("TRDASH_PASSWORD", "")
+SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"  # no DB table
+SESSION_COOKIE_AGE = 30 * 86400
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -46,8 +72,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "ui.middleware.PasswordGate",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -88,16 +116,15 @@ DATABASES = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LANGUAGE_CODE = "en-gb"
-TIME_ZONE = os.environ.get("TRDASH_TIME_ZONE", "Europe/Berlin")
+TIME_ZONE = os.environ.get("TRDASH_TIME_ZONE") or "Europe/Berlin"
 USE_I18N = False
 USE_TZ = True
 
 STATIC_URL = "static/"
-STATIC_ROOT = DATA_DIR / "static"
 
 # Trade Republic web-frontend build sent as X-TR-App-Version during login.
 # Bump when TR redeploys app.traderepublic.com (see broker/tr.py).
-TR_WEB_APP_VERSION = os.environ.get("TR_WEB_APP_VERSION", "2.2645.8")
+TR_WEB_APP_VERSION = os.environ.get("TR_WEB_APP_VERSION") or "2.2645.8"
 
 LOGGING = {
     "version": 1,
@@ -114,7 +141,7 @@ LOGGING = {
         },
     },
     "loggers": {
-        "trdash": {"handlers": ["console", "file"], "level": "INFO"},
-        "django": {"handlers": ["console"], "level": "WARNING"},
+        "trdash": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+        "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
 }

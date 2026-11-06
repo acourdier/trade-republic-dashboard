@@ -1,0 +1,12 @@
+.git
+.venv
+.env
+.env.*
+data
+legacy
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+compose.yaml
+Dockerfile

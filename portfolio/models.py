@@ -24,7 +24,6 @@ CASH_KINDS = {
     Kind.DEPOSIT, Kind.WITHDRAWAL, Kind.CARD, Kind.TAX_REFUND, Kind.BUY, Kind.SELL,
     Kind.DIVIDEND, Kind.INTEREST, Kind.BOND_REDEMPTION,
 }
-INCOME_KINDS = {Kind.DIVIDEND, Kind.INTEREST}
 
 
 class Instrument(models.Model):

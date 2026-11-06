@@ -7,7 +7,7 @@ from portfolio.models import Kind
 
 
 def row(day, kind, amount, isin="", name="X"):
-    return a.Row(day=day, kind=kind, amount=abs(amount), signed=amount, label=name, isin=isin,
+    return a.Row(day=day, kind=kind, amount=abs(amount), label=name, isin=isin,
                  name=name)
 
 

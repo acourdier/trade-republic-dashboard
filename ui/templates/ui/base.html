@@ -40,7 +40,8 @@
   </main>
 
   <footer class="foot">
-    Personal use only · data stays on this computer
+    <span>Personal use only · your data stays on your machine</span>
+    {% if gated %}<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="linkish" type="submit">Sign out</button></form>{% endif %}
   </footer>
 
   <dialog class="sync-dialog" id="sync-dialog" aria-live="polite"{% if active_run %} data-active="{{ active_run.pk }}"{% endif %}>

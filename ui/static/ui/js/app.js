@@ -67,6 +67,7 @@
     try {
       const r = await fetch(`/sync/${id}/`, { headers: { Accept: "application/json" } });
       const run = await r.json();
+      if (r.status === 401) { show("failed", { title: "Signed out", text: run.message }); return; }
       if (!render(run)) timer = setTimeout(() => poll(id), 1000);
     } catch (e) {
       timer = setTimeout(() => poll(id), 3000);

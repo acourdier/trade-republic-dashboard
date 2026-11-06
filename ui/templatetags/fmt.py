@@ -1,6 +1,5 @@
 """Number formatting for templates. Minus is a true minus sign (−)."""
 
-from decimal import Decimal
 
 from django import template
 
@@ -77,12 +76,6 @@ def qty(v, asset_class=""):
     return f"{x:,.{places}f}".rstrip("0").rstrip(".")
 
 
-@register.filter
-def money_abs(v):
-    x = _f(v)
-    return None if x is None else abs(x)
-
-
 KIND_COLOURS = {
     "buy": "--s1", "sell": "--s2", "dividend": "--s3", "interest": "--s3",
     "bond_redemption": "--s5", "deposit": "--gain", "tax_refund": "--gain",
@@ -108,8 +101,3 @@ def asset_colour(label):
 @register.filter
 def asset_label_ink(label):
     return ASSET_LABEL_INK.get(label, "light")
-
-
-@register.filter
-def dec(v):
-    return Decimal(str(v))

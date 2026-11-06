@@ -21,7 +21,7 @@
       </label>
       <div><button class="btn" type="submit">{% if creds %}Update{% else %}Connect{% endif %}</button></div>
     </form>
-    <p class="note" style="margin-top: 20px">Stored only on this computer, readable by you alone. When you sync, Trade Republic asks you to approve the login in its app. Changing the phone number clears all data from the previous account.</p>
+    <p class="note" style="margin-top: 20px">Stored only in this app's data folder, readable by you alone. When you sync, Trade Republic asks you to approve the login in its app. Changing the phone number clears all data from the previous account.</p>
   </section>
 
   <section>
@@ -75,6 +75,6 @@
     <input type="text" name="confirm" placeholder="type delete" aria-label="Type delete to confirm" autocomplete="off">
     <button class="btn danger" type="submit">Delete everything</button>
   </form>
-  <p class="note">Removes the credentials, the Trade Republic session, every synced record and the downloaded documents from this computer.</p>
+  <p class="note">Removes the credentials, the Trade Republic session, every synced record and the downloaded documents from this app.</p>
 </section>
 {% endblock %}

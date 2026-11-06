@@ -35,10 +35,6 @@ class SyncRun(models.Model):
         return f"SyncRun #{self.pk} {self.mode} {self.status}"
 
     @property
-    def is_active(self) -> bool:
-        return self.status in self.ACTIVE
-
-    @property
     def duration(self):
         if self.started_at and self.finished_at:
             return self.finished_at - self.started_at

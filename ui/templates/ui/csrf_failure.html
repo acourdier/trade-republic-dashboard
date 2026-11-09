@@ -1,0 +1,20 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Request blocked · Trade Republic</title>
+  <link rel="stylesheet" href="{% static 'ui/css/app.css' %}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23c53d2b'/%3E%3C/svg%3E">
+</head>
+<body>
+  <main class="login">
+    <span class="seal" aria-hidden="true">TR</span>
+    <h1>Request blocked</h1>
+    <div class="flash error" role="alert">CSRF check failed: {{ reason }}</div>
+    <p>{{ hint }}</p>
+    <div><a class="btn" href="{% url 'login' %}">Back to sign in</a></div>
+  </main>
+</body>
+</html>

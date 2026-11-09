@@ -41,6 +41,11 @@ docker compose logs -f
   front and set `TRDASH_BEHIND_PROXY=1`, for example with Caddy:
   `tr.example.com { reverse_proxy 127.0.0.1:8085 }`. Or reach it through a VPN
   or SSH tunnel (`ssh -L 8085:127.0.0.1:8085 server`).
+- Tailscale: `tailscale serve --bg 8085` on the server gives
+  `https://<machine>.<tailnet>.ts.net` → 127.0.0.1:8085. Put that hostname in
+  `TRDASH_ALLOWED_HOSTS` and set `TRDASH_BEHIND_PROXY=1`. Reaching the port over
+  plain `http://` instead needs `TRDASH_BEHIND_PROXY` unset, because Secure
+  cookies don't survive HTTP. A CSRF 403 page says which of the two is wrong.
 - `TRDASH_PASSWORD` is required in Docker: the sign-in password for the dashboard,
   which holds your TR PIN. Changing it signs every browser out.
 - One-off commands run as the app user through the entrypoint:

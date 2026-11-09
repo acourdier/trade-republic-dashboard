@@ -342,6 +342,31 @@ def login(request):
                   status=401 if error else 200)
 
 
+def csrf_failure(request, reason=""):
+    """CSRF_FAILURE_VIEW: say why, since a bare 403 hides it when DEBUG is off.
+
+    Nearly always a mismatch between how the browser reaches the app (http or
+    https, which host) and TRDASH_BEHIND_PROXY / TRDASH_CSRF_TRUSTED_ORIGINS.
+    """
+    origin = request.headers.get("Origin", "")
+    if reason.startswith("Origin checking failed"):
+        if origin.startswith("https://") and not request.is_secure():
+            hint = ("The browser is on HTTPS but the app sees plain HTTP, so a proxy "
+                    "(Caddy, tailscale serve…) terminates TLS. Set TRDASH_BEHIND_PROXY=1.")
+        else:
+            hint = f"Add {origin or 'this origin'} to TRDASH_CSRF_TRUSTED_ORIGINS."
+    elif reason == "CSRF cookie not set." and settings.CSRF_COOKIE_SECURE \
+            and not request.is_secure():
+        hint = ("TRDASH_BEHIND_PROXY=1 marks cookies Secure, but this page came over "
+                "plain HTTP, so the browser dropped them. Open the dashboard through "
+                "its https:// address, or unset TRDASH_BEHIND_PROXY if there is no "
+                "TLS proxy.")
+    else:
+        hint = "Reload the sign-in page and try again, with cookies enabled."
+    return render(request, "ui/csrf_failure.html", {"reason": reason, "hint": hint},
+                  status=403)
+
+
 @require_POST
 def logout(request):
     request.session.flush()

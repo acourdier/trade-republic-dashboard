@@ -48,3 +48,48 @@ def test_allowed_hosts_from_env(settings):
     settings.ALLOWED_HOSTS = ["localhost", "tr.example.com"]
     assert Client(HTTP_HOST="tr.example.com").get("/healthz").status_code == 200
     assert Client(HTTP_HOST="evil.example").get("/healthz").status_code == 400
+
+
+def test_https_origins_for_allowed_hosts():
+    from trdash.settings import https_origins
+
+    assert https_origins(["box.tail1234.ts.net", ".example.com", "*"]) == [
+        "https://box.tail1234.ts.net",
+        "https://*.example.com",
+    ]
+
+
+def _csrf_post(settings, origin, **extra):
+    settings.TRDASH_PASSWORD = "s3cret"
+    settings.ALLOWED_HOSTS = ["box.tail1234.ts.net"]
+    c = Client(enforce_csrf_checks=True, HTTP_HOST="box.tail1234.ts.net")
+    token = c.get("/login/").context["csrf_token"]
+    return c.post("/login/", {"csrfmiddlewaretoken": str(token), "password": "s3cret"},
+                  HTTP_ORIGIN=origin, **extra)
+
+
+@pytest.mark.django_db
+def test_login_through_tls_proxy_without_behind_proxy(settings):
+    # `tailscale serve`: browser on https, app sees http, TRDASH_BEHIND_PROXY unset.
+    settings.CSRF_TRUSTED_ORIGINS = ["https://box.tail1234.ts.net"]
+    assert _csrf_post(settings, "https://box.tail1234.ts.net").status_code == 302
+
+
+@pytest.mark.django_db
+def test_csrf_failure_explains_proxy_mismatch(settings):
+    settings.CSRF_TRUSTED_ORIGINS = []
+    r = _csrf_post(settings, "https://box.tail1234.ts.net")
+    assert r.status_code == 403
+    assert b"Origin checking failed" in r.content
+    assert b"TRDASH_BEHIND_PROXY=1" in r.content
+
+
+@pytest.mark.django_db
+def test_csrf_failure_explains_secure_cookie_over_http(settings):
+    settings.TRDASH_PASSWORD = "s3cret"
+    settings.CSRF_COOKIE_SECURE = True
+    c = Client(enforce_csrf_checks=True, HTTP_HOST="localhost")
+    r = c.post("/login/", {"password": "s3cret"})  # browser dropped the Secure cookie
+    assert r.status_code == 403
+    assert b"CSRF cookie not set" in r.content
+    assert b"https://" in r.content

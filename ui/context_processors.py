@@ -10,6 +10,7 @@ NAV = [
     ("activity", "Activity"),
     ("income", "Income"),
     ("performance", "Performance"),
+    ("projection", "Projection"),
     ("settings", "Settings"),
 ]
 

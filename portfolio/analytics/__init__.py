@@ -222,7 +222,13 @@ def cost_basis_series(rows: list[Row], on: date) -> list[tuple[date, float]]:
 
 
 def net_worth_series() -> list[tuple[date, float]]:
-    """Real total value per day, from the end-of-day PortfolioSnapshot."""
+    """Total value per day: the rebuilt history (ValuePoint), else the snapshots."""
+    from portfolio.models import ValuePoint
+
+    rebuilt = [(d, float(c + v)) for d, c, v in
+               ValuePoint.objects.values_list("date", "cash", "depot_value")]
+    if rebuilt:
+        return rebuilt
     by_day: dict[date, float] = {}
     for taken_at, cash, depot in (PortfolioSnapshot.objects.order_by("taken_at")
                                   .values_list("taken_at", "cash", "depot_value")):
@@ -265,6 +271,7 @@ def allocation(pos: list[dict], cash: float) -> dict:
 # ---------------------------------------------------------------------------
 def _cache_key(name: str) -> str:
     """Changes whenever a sync, snapshot, new event or benchmark price lands."""
+    from broker.models import Setting
     from portfolio.models import BenchmarkPrice
 
     parts = (
@@ -272,6 +279,7 @@ def _cache_key(name: str) -> str:
         PortfolioSnapshot.objects.values_list("pk", flat=True).first(),
         Transaction.objects.count(),
         BenchmarkPrice.objects.count(),
+        (Setting.get("history_report") or {}).get("built_at"),
         today(),
     )
     return f"analytics:{name}:" + ":".join(map(str, parts))

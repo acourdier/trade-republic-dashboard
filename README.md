@@ -1,7 +1,9 @@
 # Trade Republic dashboard
 
 A single-user dashboard for one Trade Republic account: positions,
-per-instrument history, activity, income, performance against index funds.
+per-instrument history, activity, income, performance against index funds,
+and a 30-year projection (three scenarios) against the account's daily value
+since it opened.
 Django 6.1 + SQLite; runs on your computer or your own server (Docker).
 
 **Personal use only.** It uses [`tr-api`](https://github.com/cdamken/tr-api)
@@ -77,4 +79,11 @@ See `.env.example`.
 uv run pytest
 uv run ruff check .
 uv run python manage.py reclassify   # re-map stored events after a mapping change
+uv run python manage.py rebuild_history   # recompute the daily value history (no network)
 ```
+
+Each sync also fetches every trade's detail (share count, price, fees, taxes),
+Trade Republic's price history for every instrument ever traded and the ECB
+deposit rate and euro-area inflation, then rebuilds the daily value history.
+Those steps are best effort: if TR refuses one, the sync still succeeds and
+the run's counts say what failed.

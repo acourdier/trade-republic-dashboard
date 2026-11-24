@@ -10,10 +10,13 @@ Personal use only (BSL-1.1 code inside — see LICENSE).
 - `broker/` — Trade Republic side.
   - `tr.py`: the **kept, tested** TR code (login, snapshot, timeline). Read its docstring before touching it.
   - `mapping.py`: eventType → `Kind`, pure functions.
-  - `sync.py`: one run → DB.
+  - `sync.py`: one run → DB. After the timeline: trade details, price history, ECB data, then the value-history rebuild (all best effort).
   - `jobs.py`: `SyncRun` queue + worker loop + keepalive.
   - `models.py`: `SyncRun`, `Setting`.
-- `portfolio/` — `models.py` (Instrument, Transaction, PortfolioSnapshot, PositionSnapshot, BenchmarkPrice, Document) and `analytics/` (pure functions, cached per sync).
+- `portfolio/` — `models.py` (Instrument, Transaction, PortfolioSnapshot, PositionSnapshot, BenchmarkPrice, Document, PricePoint, ValuePoint) and `analytics/` (pure functions, cached per sync).
+  - `analytics/history.py`: daily account value rebuilt from trades × TR closes → `ValuePoint`, anchored on snapshots. `manage.py rebuild_history` (no network).
+  - `analytics/projection.py`: the Projection page. Scenarios replay the user's own decisions up to today, then monthly contributions; assumptions live in `Setting("projection")`.
+  - `analytics/ecb.py`: ECB deposit rate and euro-area HICP into `PricePoint` (`ECB:DFR`, `ECB:HICP`).
 - `ui/` — views, templates, `static/ui/{css,js,fonts,vendor}`. No build step.
 - `Dockerfile`, `compose.yaml`, `docker/entrypoint.sh` (installed as `manage`) — server deployment.
 
@@ -23,7 +26,9 @@ Personal use only (BSL-1.1 code inside — see LICENSE).
 - **Both timeline topics are paginated on ONE WebSocket** (`tr.fetch_timeline`). A second WS returns 0 activity items.
 - **`compactPortfolioByType` needs `secAccNo`.** Without it TR returns empty positions (the legacy app showed cash only).
 - **Withdrawal ≠ card spending.** `net_capital_in = deposits + tax_refunds − withdrawals`; `lifetime_pl = value + card − net_capital_in − income`. See `portfolio/analytics/__init__.py`.
-- `Transaction.raw` keeps TR's payload. After changing `mapping.py`, run `manage.py reclassify` (no network).
+- `Transaction.raw` keeps TR's payload (and `Transaction.detail` its timelineDetailV2). After changing `mapping.py`, run `manage.py reclassify` (no network; it also rebuilds the value history).
+- **Cash reconciles only if every cash-moving eventType is mapped.** `SAVINGS_PLAN_INVOICE_CREATED` (mid-2024 → early 2025) is a savings-plan buy. The rebuild reports the cash gap against the latest snapshot; a big gap means an unmapped eventType.
+- **Don't use `tr_api.timeline_detail.fetch_many`**: its concurrent `fetch_one` calls on one socket drop each other's frames. Use `ws.batch_fetch` in chunks (`tr.fetch_trade_details`).
 - Dedupe is by TR event `id` (`tr_id`). A full sync deletes rows TR no longer returns.
 - Errors from TR are `broker.tr.TrError` subclasses; `run_sync` never raises, and failures land on the `SyncRun`.
 - **Docker is one container, one replica.** All state is in `/data`, and `HOME=/data/home`, so tr-api's `~/.tr-api` profile persists. Chromium (Playwright `--only-shell`) is in the image for the WAF token. The entrypoint `manage` drops root to uid 1000.
@@ -39,5 +44,5 @@ For Docker changes: `docker build -t trdash:test .` and run it against an empty 
 
 ## Open items
 
-- `timelineDetailV2` enrichment: fill `shares`, `price`, `fees`, `taxes` per trade. `tr.fetch_details` exists but nothing calls it yet.
+- `timelineDetailV2` and `aggregateHistoryLight` haven't been run against real TR yet. Check the first sync's counts (`history.details.with_shares`, `history.prices.priced`) and the note under the Projection chart; adjust `mapping.parse_detail` labels or `tr.HISTORY_RANGES` if they come back empty.
 - The documents download hasn't been run against real TR yet.

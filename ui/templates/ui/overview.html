@@ -60,7 +60,7 @@
   </div>
   <div class="legend" style="margin-bottom: 16px">
     <span class="key"><i class="swatch" style="background: var(--s1)"></i>Invested capital (buys − sells)</span>
-    <span class="key"><i class="line" style="background: var(--ink)"></i>Account value, recorded at each sync</span>
+    <span class="key"><i class="line" style="background: var(--ink)"></i>Account value (rebuilt daily, TR's figure on sync days)</span>
   </div>
   <div class="chart"><canvas data-chart="line" data-source="nw-data" aria-label="Invested capital and account value over time"></canvas></div>
   {{ chart|json_script:"nw-data" }}

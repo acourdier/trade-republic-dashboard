@@ -10,8 +10,20 @@
   const compact = new Intl.NumberFormat("en-GB", { notation: "compact", maximumFractionDigits: 1 });
   const dayFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
   const monFmt = new Intl.DateTimeFormat("en-GB", { month: "short", year: "2-digit" });
+  const yearFmt = new Intl.DateTimeFormat("en-GB", { year: "numeric" });
   const DAY = 86400000;
 
+  // Ticks on 1 January every 1/2/5/10 years, for long ranges.
+  const yearTicks = (lo, hi) => {
+    const first = new Date(lo).getFullYear() + 1;
+    const last = new Date(hi).getFullYear();
+    const step = [1, 2, 5, 10, 20].find((s) => (last - first + 1) / s <= 6) || 50;
+    const ticks = [];
+    for (let y = Math.ceil(first / step) * step; y <= last; y += step) {
+      ticks.push({ value: new Date(y, 0, 1).getTime() });
+    }
+    return ticks;
+  };
   const axisTick = (v) => (Math.abs(v) >= 10000 ? "€" + compact.format(v) : eur0.format(v));
   const withAlpha = (hex, a) => {
     const h = hex.replace("#", "");
@@ -36,6 +48,7 @@
       title.textContent = titleFmt(tooltip.dataPoints[0]);
       el.appendChild(title);
       for (const dp of tooltip.dataPoints) {
+        if (dp.parsed.y == null || Number.isNaN(dp.parsed.y)) continue;
         const row = document.createElement("div");
         row.className = "t-row";
         const name = document.createElement("span");
@@ -98,15 +111,43 @@
     };
   }
 
+  // Dashed vertical line + label at spec.marker (e.g. "today" on a projection).
+  const marker = {
+    id: "marker",
+    afterDraw(chart, _args, opts) {
+      if (opts.x == null) return;
+      const x = chart.scales.x.getPixelForValue(opts.x);
+      const { top, bottom, left, right } = chart.chartArea;
+      if (x < left || x > right) return;
+      const c = chart.ctx;
+      c.save();
+      c.strokeStyle = css("--ink-3");
+      c.setLineDash([2, 3]);
+      c.beginPath();
+      c.moveTo(Math.round(x) + 0.5, top);
+      c.lineTo(Math.round(x) + 0.5, bottom);
+      c.stroke();
+      c.fillStyle = css("--ink-3");
+      c.font = `11px ${css("--sans")}`;
+      c.textAlign = x > right - 40 ? "right" : "left";
+      c.fillText(opts.label || "", x + (c.textAlign === "left" ? 6 : -6), top + 10);
+      c.restore();
+    },
+  };
+
   const registry = [];
   function register(fn) { registry.push(fn); fn(); }
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => registry.forEach((f) => f()));
 
   // ------------------------------------------------------------ line chart
-  // spec: {series: [{label, color: "--s1", points: [[iso, value], ...], fill, dash}], ranges}
+  // spec: {series: [{label, color: "--s1", points: [[iso, value|null], ...], fill, dash, thin}],
+  //        ranges, marker: iso}
+  // Range buttons: data-days = look back from now (0 = from the start),
+  // data-ahead = look ahead from now (absent = to the end).
   function lineChart(canvas, spec) {
     let chart;
     let minX = null;
+    let maxX = null;
     const render = () => {
       if (chart) chart.destroy();
       const surface = css("--paper");
@@ -118,7 +159,7 @@
           borderColor: color,
           backgroundColor: s.fill ? withAlpha(color, 0.1) : color,
           fill: s.fill ? "origin" : false,
-          borderWidth: 2,
+          borderWidth: s.thin ? 1 : 2,
           borderDash: s.dash ? [4, 4] : [],
           borderJoinStyle: "round",
           borderCapStyle: "round",
@@ -136,20 +177,25 @@
         };
       });
       const xs = datasets.flatMap((d) => d.data.map((p) => p.x));
+      const lo = Math.max(minX ?? -Infinity, Math.min(...xs));
+      const hi = Math.min(maxX ?? Infinity, Math.max(...xs));
+      const tickFmt = hi - lo > 4 * 365 * DAY ? yearFmt : monFmt;
       const opts = baseOptions();
       opts.scales.x = {
         type: "linear",
-        min: Math.max(minX ?? -Infinity, Math.min(...xs)),
-        max: Math.max(...xs),
+        min: lo,
+        max: hi,
         border: { color: css("--hair") },
         grid: { display: false },
-        ticks: { maxTicksLimit: 6, padding: 8, callback: (v) => monFmt.format(new Date(v)) },
+        ticks: { maxTicksLimit: 6, padding: 8, callback: (v) => tickFmt.format(new Date(v)) },
       };
+      if (tickFmt === yearFmt) opts.scales.x.afterBuildTicks = (scale) => { scale.ticks = yearTicks(lo, hi); };
+      opts.plugins.marker = { x: spec.marker ? Date.parse(spec.marker) : null, label: "Today" };
       opts.plugins.tooltip = {
         enabled: false,
         external: tooltipHandler((dp) => dayFmt.format(new Date(dp.parsed.x))),
       };
-      chart = new Chart(canvas, { type: "line", data: { datasets }, options: opts, plugins: [crosshair] });
+      chart = new Chart(canvas, { type: "line", data: { datasets }, options: opts, plugins: [crosshair, marker] });
     };
     register(render);
 
@@ -161,6 +207,7 @@
         ranges.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
         const days = Number(b.dataset.days);
         minX = days ? Date.now() - days * DAY : null;
+        maxX = b.dataset.ahead == null ? null : Date.now() + Number(b.dataset.ahead) * DAY;
         render();
       });
     }

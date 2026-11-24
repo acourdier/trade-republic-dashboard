@@ -258,6 +258,7 @@ section:first-of-type { margin-top: 0; }
 .legend .key { display: inline-flex; align-items: center; gap: 8px; }
 .legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
 .legend .line { width: 14px; height: 2px; border-radius: 1px; }
+.legend .line.dashed { background: repeating-linear-gradient(90deg, var(--k) 0 4px, transparent 4px 7px); }
 .legend .num { color: var(--ink-3); }
 
 /* ---------------------------------------------------------------- layout */
@@ -337,8 +338,9 @@ details.table-view .table-wrap { max-height: 320px; overflow-y: auto; margin-top
   border-radius: var(--radius);
   cursor: pointer;
 }
-.ranges button:hover { color: var(--ink); background: var(--paper-2); }
-.ranges button[aria-pressed="true"] { color: var(--ink); background: var(--paper-3); }
+.ranges a { font-size: 12px; color: var(--ink-3); padding: 4px 8px; border-radius: var(--radius); text-decoration: none; }
+.ranges button:hover, .ranges a:hover { color: var(--ink); background: var(--paper-2); }
+.ranges button[aria-pressed="true"], .ranges a[aria-current="true"] { color: var(--ink); background: var(--paper-3); }
 
 /* ---------------------------------------------------------------- controls */
 .btn {
@@ -372,6 +374,9 @@ input[type="text"], input[type="search"], input[type="tel"], input[type="passwor
 input:focus, select:focus { border-color: var(--ink-3); outline: none; }
 label.field { display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); }
 form.stack { display: grid; gap: 18px; max-width: 360px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px 28px; align-items: end; }
+.form-grid input { width: 100%; }
+input[aria-invalid="true"] { border-color: var(--loss); }
 .pager { display: flex; gap: 16px; align-items: center; margin-top: 24px; font-size: 13px; color: var(--ink-3); }
 .flash { padding: 14px 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); margin-bottom: 40px; font-size: 14px; }
 .flash.error { color: var(--loss); }

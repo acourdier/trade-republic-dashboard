@@ -36,6 +36,8 @@ EVENT_TYPE_MAP: dict[str, str] = {
     "card_refund": Kind.DEPOSIT,
     # Card spending: consumption, money leaves the user's wealth
     "CARD_TRANSACTION": Kind.CARD,
+    "CARD_ATM_WITHDRAWAL": Kind.CARD,  # cash taken out to spend
+    "CARD_ORDER_FEE": Kind.CARD,
     "CRYPTO_TRANSFER_NETWORK_FEE": Kind.CARD,
     "card_successful_transaction": Kind.CARD,  # legacy
     # Withdrawals: money back to the user's own bank (still their money)
@@ -54,7 +56,10 @@ EVENT_TYPE_MAP: dict[str, str] = {
     "TAX_REFUND": Kind.TAX_REFUND,  # legacy
     # Trading — savings plan / round-up / saveback are always buys
     "TRADING_SAVINGSPLAN_EXECUTED": Kind.BUY,
-    "SAVINGS_PLAN_EXECUTED": Kind.BUY,  # legacy
+    "SAVINGS_PLAN_EXECUTED": Kind.BUY,  # legacy, until mid-2024
+    # Savings plans mid-2024 → early 2025 ("Saving executed"). Not an invoice
+    # for another event: no BUY pairs with it, and cash only reconciles with it.
+    "SAVINGS_PLAN_INVOICE_CREATED": Kind.BUY,
     "SPARE_CHANGE_AGGREGATE": Kind.BUY,
     "SAVEBACK_AGGREGATE": Kind.BUY,
     "TRADING_TRADE_EXECUTED": TRADE,
@@ -202,3 +207,114 @@ def transaction_fields(ev: dict[str, Any]) -> dict[str, Any]:
         "event_subtype": str(subtype)[:200],
         "isin": extract_isin(ev),
     }
+
+
+# ---------------------------------------------------------------------------
+# timelineDetailV2 → shares, price, fees, taxes
+# ---------------------------------------------------------------------------
+# NOT yet checked against a real TR detail payload. TR nests "title"/"detail"
+# rows in table sections, sometimes a level deeper behind an action payload,
+# so the parser walks the whole tree. The history rebuild only trusts the
+# result when shares × price agrees with the cash amount (see
+# portfolio.analytics.history), so a mis-parse degrades to an estimate.
+_DETAIL_LABELS = {
+    "shares": {"shares", "anteile", "aktien", "stück", "stk.", "quantity", "units"},
+    "price": {"share price", "price per share", "aktienkurs", "anteilspreis", "kurs",
+              "preis", "price", "execution price", "ausführungskurs"},
+    "fees": {"fee", "fees", "gebühr", "gebühren", "order fee", "fremdkostenzuschlag",
+             "external cost surcharge"},
+    "taxes": {"tax", "taxes", "steuer", "steuern", "withholding tax", "quellensteuer",
+              "kapitalertragsteuer", "kapitalertragssteuer", "solidaritätszuschlag",
+              "kirchensteuer", "capital gains tax"},
+}
+
+
+def parse_number(text: Any) -> float | None:
+    """'€1,234.56', '1.234,56 €', '0.394738', '−12,5' → float. None if no number."""
+    if isinstance(text, (int, float)):
+        return float(text)
+    if not isinstance(text, str):
+        return None
+    s = text.replace("−", "-").replace(" ", "").replace(" ", "")
+    s = "".join(ch for ch in s if ch.isdigit() or ch in ".,-")
+    neg = s.startswith("-")
+    s = s.lstrip("-").replace("-", "")
+    if not any(ch.isdigit() for ch in s):
+        return None
+    if "," in s and "." in s:
+        dec = "," if s.rfind(",") > s.rfind(".") else "."
+        s = s.replace("." if dec == "," else ",", "").replace(dec, ".")
+    elif "," in s:
+        head, _, tail = s.rpartition(",")
+        # One comma with exactly three digits after it is a thousands separator
+        # ("1,234"); anything else is a decimal comma ("0,394738", "12,5").
+        thousands = s.count(",") > 1 or len(tail) == 3
+        s = s.replace(",", "") if thousands else f"{head}.{tail}"
+    elif s.count(".") > 1:
+        s = s.replace(".", "")  # "1.234.567"
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return -v if neg else v
+
+
+def _detail_rows(node: Any, out: list[tuple[str, str]]) -> None:
+    if isinstance(node, dict):
+        title, detail = node.get("title"), node.get("detail")
+        if isinstance(title, str) and isinstance(detail, dict):
+            text = detail.get("text") or detail.get("value")
+            if isinstance(text, (str, int, float)):
+                out.append((title.strip().lower(), str(text)))
+        for v in node.values():
+            _detail_rows(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            _detail_rows(v, out)
+
+
+def parse_detail(detail: Any) -> dict[str, Decimal | None]:
+    """{shares, price, fees, taxes} from a timelineDetailV2 answer (None if absent)."""
+    out: dict[str, Decimal | None] = dict.fromkeys(_DETAIL_LABELS)
+    if not isinstance(detail, dict) or "error" in detail:
+        return out
+    rows: list[tuple[str, str]] = []
+    _detail_rows(detail, rows)
+    seen: set[tuple[str, str]] = set()
+    sums: dict[str, float] = {}
+    for title, text in rows:
+        if (title, text) in seen:  # nested pages repeat the same rows
+            continue
+        seen.add((title, text))
+        for field, labels in _DETAIL_LABELS.items():
+            if title not in labels:
+                continue
+            v = parse_number(text)
+            if v is None:
+                break
+            if field in ("fees", "taxes"):
+                sums[field] = sums.get(field, 0.0) + abs(v)
+            elif out[field] is None and v > 0:
+                out[field] = to_decimal(f"{v:.8f}")
+            break
+    for field, v in sums.items():
+        out[field] = to_decimal(f"{v:.4f}")
+    return out
+
+
+def parse_aggregates(payload: Any) -> list[tuple[str, float]]:
+    """aggregateHistoryLight answer → [(iso date, close)], oldest first."""
+    from datetime import date as _date
+
+    out: dict[str, float] = {}
+    aggs = payload.get("aggregates") if isinstance(payload, dict) else None
+    for a in aggs or []:
+        if not isinstance(a, dict):
+            continue
+        t = a.get("time")
+        close = parse_number(a.get("close") if a.get("close") is not None else a.get("adjValue"))
+        if not isinstance(t, (int, float)) or close is None or close <= 0:
+            continue
+        day = datetime.fromtimestamp(t / 1000, UTC).date()
+        out[_date.isoformat(day)] = close
+    return sorted(out.items())

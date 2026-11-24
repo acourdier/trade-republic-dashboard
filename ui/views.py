@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import re
 import shutil
 import time
@@ -6,6 +7,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
@@ -24,7 +26,9 @@ from portfolio.models import (
     Instrument,
     Kind,
     PortfolioSnapshot,
+    PricePoint,
     Transaction,
+    ValuePoint,
 )
 from ui import middleware as gate
 
@@ -227,6 +231,69 @@ def performance(request):
     })
 
 
+PROJECTION_ORDER = ["optimistic", "baseline", "pessimistic"]  # top to bottom on the chart
+
+
+def projection(request):
+    from portfolio.analytics import ecb, history
+    from portfolio.analytics import projection as proj
+
+    errors: dict[str, str] = {}
+    if request.method == "POST":
+        data, errors = proj.clean(request.POST)
+        if not errors:
+            Setting.put("projection", data)
+            return redirect(request.get_full_path())
+    a = proj.from_dict(Setting.get("projection"))
+    base = "today" if request.GET.get("base") == "today" else "opening"
+    real = request.GET.get("view") == "real"
+    actual = [proj.Actual(d, float(c), float(v), float(n)) for d, c, v, n in
+              ValuePoint.objects.values_list("date", "cash", "depot_value", "net_capital_in")]
+    dfr = ecb.series(ecb.DFR)
+    built_at = (Setting.get("history_report") or {}).get("built_at")
+    key = "projection:" + hashlib.sha1(repr((
+        built_at, len(actual), sorted(proj.as_dict(a).items()), base, real,
+        dfr[-1] if dfr else None, timezone.localdate())).encode()).hexdigest()
+    p = cache.get(key)
+    if p is None:
+        p = proj.build(a, history.load_events(), actual, ecb.series(ecb.HICP),
+                       dfr[-1][1] if dfr else None, base=base, real=real)
+        cache.set(key, p, 3600)
+
+    chart = lines = milestones = None
+    if p is not None:
+        by_key = {line["key"]: line for line in p["lines"]}
+        lines = [{**by_key[k], "at_today": p["at_today"][k]} for k in PROJECTION_ORDER]
+        chart = {
+            "ranges": "#proj-ranges",
+            "marker": p["today"].isoformat(),
+            "series": [
+                {"label": "Actual", "color": "--ink", "points": p["actual_points"]},
+                *({"label": f"{ln['label']} ({ln['rate']:g} %)", "color": ln["colour"],
+                   "dash": True, "points": ln["points"]} for ln in lines),
+                {"label": "Money paid in", "color": "--ink-3", "fill": True, "thin": True,
+                 "points": p["paid_points"]},
+            ],
+        }
+        milestones = [{"label": m["label"], "paid_in": m["paid_in"],
+                       "values": [m[k] for k in PROJECTION_ORDER]} for m in p["milestones"]]
+
+    posted = request.POST if errors else None
+    form = [{"name": name, "label": label, "error": errors.get(name),
+             "value": posted.get(name, "") if posted is not None
+             else ("" if getattr(a, name) is None else f"{getattr(a, name):g}"),
+             "placeholder": f"ECB, now {dfr[-1][1]:g}" if name == "cash_rate_pct" and dfr
+             else ""}
+            for name, (label, _lo, _hi) in proj.FIELDS.items()]
+    report = Setting.get("history_report") or {}
+    return render(request, "ui/projection.html", {
+        "p": p, "chart": chart, "lines": lines, "milestones": milestones, "a": a,
+        "form": form, "errors": errors, "report": report, "base": base, "real": real,
+        "dfr": dfr[-1] if dfr else None,
+        "rebuilt_from": ValuePoint.objects.filter(source=ValuePoint.Source.REBUILT).count(),
+    })
+
+
 def settings_page(request):
     creds = tr.load_credentials()
     error = None
@@ -261,6 +328,9 @@ def settings_page(request):
 
 
 def _wipe_account_data():
+    ValuePoint.objects.all().delete()
+    PricePoint.objects.exclude(series__startswith="ECB:").delete()
+    Setting.objects.filter(key__in=["history_report", "prices_fetched"]).delete()
     Transaction.objects.all().delete()
     PortfolioSnapshot.objects.all().delete()
     Instrument.objects.all().delete()

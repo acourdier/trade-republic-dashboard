@@ -15,6 +15,10 @@ re-testing against a real account:
 * timelineTransactions and timelineActivityLog MUST be paginated on the SAME
   WebSocket: a second, separate WS returns 0 activity items.
 
+Not yet tested against real TR: fetch_trade_details (timelineDetailV2) and
+fetch_price_history (aggregateHistoryLight), used for the value history.
+Callers treat both as best effort.
+
 Errors are raised as TrError subclasses; the worker turns them into a failed
 SyncRun with a readable message.
 """
@@ -40,6 +44,8 @@ from tr_api import portfolio as tr_portfolio
 from tr_api import transactions as tr_transactions
 from tr_api.auth import InvalidCredentials, LoginError, RateLimited
 from tr_api.exceptions import MissingSessionCookies, ProfileNotFound, SessionExpired, TrApiError
+
+from broker import mapping
 
 log = logging.getLogger("trdash.broker")
 
@@ -440,3 +446,93 @@ def download_documents(client: TrClient, out_dir: Path, phone: str):
     return documents.download_all(
         client, out_dir, keepalive=lambda: refresh_session(phone), write_manifest=True
     )
+
+
+# ---------------------------------------------------------------------------
+# Trade details and price history (value-history rebuild)
+#
+# NOT yet run against real TR. Both use batch_fetch (subscribe a chunk, drain
+# the answers) on one WebSocket. tr_api.timeline_detail.fetch_many is avoided
+# on purpose: it runs concurrent fetch_one calls on one socket, and each one
+# discards the frames that belong to the others.
+# ---------------------------------------------------------------------------
+DETAIL_CHUNK = 50
+HISTORY_CHUNK = 25
+HISTORY_RANGES = ("max", "1y")  # "max" first; "1y" for instruments that refuse it
+
+
+async def _batch_in_chunks(ws, payloads: list[dict[str, Any]], chunk: int) -> list[Any]:
+    """batch_fetch chunk by chunk. A chunk with no answer at all means TR doesn't
+    serve the topic (each would wait out the idle timeout), so stop there."""
+    out: list[Any] = []
+    for i in range(0, len(payloads), chunk):
+        answers = await ws.batch_fetch(payloads[i:i + chunk], timeout=120)
+        out += answers
+        if not any(isinstance(a, dict) for a in answers):
+            log.info("no answers for %s; skipping the rest", payloads[i].get("type"))
+            return out + [None] * (len(payloads) - len(out))
+    return out
+
+
+def _first_exchange(inst: Any) -> str:
+    ex = inst.get("exchangeIds") if isinstance(inst, dict) else None
+    first = ex[0] if isinstance(ex, list) and ex else None
+    if isinstance(first, dict):
+        first = first.get("slug")
+    return first if isinstance(first, str) else ""
+
+
+@_wrap_session_errors("trade detail fetch")
+def fetch_trade_details(client: TrClient, event_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """{event id: timelineDetailV2 answer, or {"error": ...} when TR gave none}."""
+    from tr_api.protocol import TrWebSocket
+
+    ids = list(event_ids)
+
+    async def _go():
+        async with TrWebSocket(client.session.cookies) as ws:
+            return await _batch_in_chunks(
+                ws, [{"type": "timelineDetailV2", "id": i} for i in ids], DETAIL_CHUNK)
+
+    if not ids:
+        return {}
+    answers = asyncio.run(_go())
+    return {i: a if isinstance(a, dict) else {"error": "no answer"}
+            for i, a in zip(ids, answers, strict=True)}
+
+
+@_wrap_session_errors("price history fetch")
+def fetch_price_history(client: TrClient, exchanges: dict[str, str]) -> dict[str, Any]:
+    """{isin: exchange or ""} → {"closes": {isin: [(iso, close)]}, "exchanges": {...}}.
+
+    Instruments without a known exchange (sold before the first snapshot) are
+    looked up with the `instrument` topic first, like the portfolio snapshot.
+    """
+    from tr_api.protocol import TrWebSocket
+
+    exchanges = dict(exchanges)
+
+    async def _go():
+        async with TrWebSocket(client.session.cookies) as ws:
+            missing = [i for i, ex in exchanges.items() if not ex]
+            if missing:
+                infos = await _batch_in_chunks(
+                    ws, [{"type": "instrument", "id": i} for i in missing], HISTORY_CHUNK)
+                for isin, info in zip(missing, infos, strict=True):
+                    exchanges[isin] = _first_exchange(info)
+            closes: dict[str, list[tuple[str, float]]] = {}
+            for rng in HISTORY_RANGES:
+                todo = [(i, ex) for i, ex in exchanges.items() if ex and i not in closes]
+                if not todo:
+                    break
+                answers = await _batch_in_chunks(ws, [
+                    {"type": "aggregateHistoryLight", "range": rng, "id": f"{i}.{ex}"}
+                    for i, ex in todo], HISTORY_CHUNK)
+                for (isin, _), answer in zip(todo, answers, strict=True):
+                    if points := mapping.parse_aggregates(answer):
+                        closes[isin] = points
+            return closes
+
+    closes = asyncio.run(_go()) if exchanges else {}
+    log.info("price history: %d/%d instruments", len(closes), len(exchanges))
+    return {"closes": closes, "exchanges": exchanges}

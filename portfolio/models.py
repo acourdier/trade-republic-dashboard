@@ -176,3 +176,47 @@ class Document(models.Model):
 
     class Meta:
         ordering = ["-date"]
+
+
+class PricePoint(models.Model):
+    """Dated values of an external series.
+
+    series = an ISIN: instrument closes from TR's aggregateHistoryLight (EUR).
+    series = "ECB:DFR": ECB deposit facility rate, % a year, on change dates.
+    series = "ECB:HICP": euro-area consumer price index, first of each month.
+    """
+
+    series = models.CharField(max_length=20)
+    date = models.DateField()
+    value = models.DecimalField(max_digits=20, decimal_places=6)
+
+    class Meta:
+        ordering = ["series", "date"]
+        constraints = [models.UniqueConstraint(fields=["series", "date"], name="uniq_price_point")]
+
+
+class ValuePoint(models.Model):
+    """Account value per day since the first event — the history time series.
+
+    REBUILT rows are recomputed from trades × prices after every sync
+    (portfolio.analytics.history.rebuild, no network); SNAPSHOT rows carry
+    TR's own figures for days a sync ran and are never overwritten by a rebuild.
+    """
+
+    class Source(models.TextChoices):
+        REBUILT = "rebuilt", "Rebuilt"
+        SNAPSHOT = "snapshot", "Snapshot"
+
+    date = models.DateField(unique=True)
+    cash = models.DecimalField(max_digits=18, decimal_places=2)
+    depot_value = models.DecimalField(max_digits=18, decimal_places=2)
+    net_capital_in = models.DecimalField(max_digits=18, decimal_places=2)
+    cost_basis = models.DecimalField(max_digits=18, decimal_places=2)
+    source = models.CharField(max_length=10, choices=Source.choices)
+
+    class Meta:
+        ordering = ["date"]
+
+    @property
+    def total(self):
+        return self.cash + self.depot_value

@@ -115,3 +115,42 @@ def test_url_prefix_behind_proxy(client, settings, request):
     page = client.get("/settings/").content.decode()
     assert 'data-url="/trdash/sync/"' in page
     assert "/trdash/static/ui/js/app.js" in page
+
+
+@pytest.mark.django_db
+def test_projection_page(client, settings):
+    from datetime import date, timedelta
+    from decimal import Decimal
+
+    from broker.models import Setting
+    from portfolio.models import ValuePoint
+
+    settings.TRDASH_PASSWORD = ""
+    r = client.get("/projection/")
+    assert r.status_code == 200 and b"Run one to see the projection" in r.content
+
+    start = date(2023, 5, 31)
+    ValuePoint.objects.bulk_create(
+        ValuePoint(date=start + timedelta(days=i), cash=Decimal(100), depot_value=Decimal(900 + i),
+                   net_capital_in=Decimal(1000), cost_basis=Decimal(900), source="rebuilt")
+        for i in range(40))
+    for q in ("", "?view=real", "?base=today"):
+        r = client.get(f"/projection/{q}")
+        assert r.status_code == 200
+        assert b'id="proj-data"' in r.content and b"May 2053" in r.content
+
+    form = {"monthly_contribution": "900", "contribution_growth_pct": "2", "pessimistic_pct": "2",
+            "baseline_pct": "5", "optimistic_pct": "7", "inflation_pct": "2",
+            "cash_rate_pct": "", "horizon_years": "30"}
+    r = client.post("/projection/?view=real", form)
+    assert r.status_code == 302 and r["Location"] == "/projection/?view=real"
+    assert Setting.get("projection")["monthly_contribution"] == 900.0
+    r = client.post("/projection/", {**form, "baseline_pct": "lots"})
+    assert r.status_code == 200 and b"enter a number" in r.content
+    assert Setting.get("projection")["baseline_pct"] == 5.0
+
+
+@pytest.mark.django_db
+def test_projection_is_gated(client, settings):
+    settings.TRDASH_PASSWORD = "s3cret"
+    assert client.get("/projection/").status_code == 302

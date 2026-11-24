@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -12,7 +12,14 @@ from django.utils import timezone
 
 from broker import mapping, tr
 from broker.models import SyncRun
-from portfolio.models import Instrument, Kind, PortfolioSnapshot, PositionSnapshot, Transaction
+from portfolio.models import (
+    Instrument,
+    Kind,
+    PortfolioSnapshot,
+    PositionSnapshot,
+    PricePoint,
+    Transaction,
+)
 
 log = logging.getLogger("trdash.sync")
 
@@ -51,6 +58,9 @@ def run_sync(run: SyncRun) -> None:
             counts |= sync_transactions(client, full=run.mode == SyncRun.Mode.FULL)
             _set(run, stage="Updating benchmarks")
             counts["benchmarks"] = refresh_benchmarks()
+            counts["history"] = sync_history(
+                client, full=run.mode == SyncRun.Mode.FULL,
+                stage=lambda text: _set(run, stage=text))
         _set(run, status=SyncRun.Status.DONE, stage="Done", counts=counts,
              finished_at=timezone.now(), message="")
         log.info("sync #%s done: %s", run.pk, counts)
@@ -221,6 +231,91 @@ def refresh_benchmarks() -> dict[str, int]:
         return {}
 
 
+# ---------------------------------------------------------------------------
+# Value history: trade details, price history, ECB data, then the rebuild
+# ---------------------------------------------------------------------------
+PRICES_REFRESH_AFTER = timedelta(hours=20)
+_TRADES = [Kind.BUY, Kind.SELL]
+
+
+def sync_details(client, *, full: bool) -> dict[str, int]:
+    """timelineDetailV2 for trades without one (a full sync retries failures)."""
+    trades = Transaction.objects.filter(kind__in=_TRADES).exclude(tr_id__startswith="h:")
+    pending = trades.filter(detail__isnull=True)
+    if full:
+        pending = pending | trades.filter(detail__has_key="error")
+    ids = list(pending.values_list("tr_id", flat=True))
+    if not ids:
+        return {"fetched": 0, "with_shares": 0}
+    got = tr.fetch_trade_details(client, ids)
+    rows = []
+    for t in Transaction.objects.filter(tr_id__in=ids):
+        t.detail = got.get(t.tr_id) or {"error": "no answer"}
+        for k, v in mapping.parse_detail(t.detail).items():
+            setattr(t, k, v)
+        rows.append(t)
+    Transaction.objects.bulk_update(rows, ["detail", "shares", "price", "fees", "taxes"],
+                                    batch_size=500)
+    return {"fetched": len(ids), "with_shares": sum(1 for t in rows if t.shares is not None)}
+
+
+def sync_prices(client, *, force: bool) -> dict[str, int]:
+    """TR closes for every instrument ever traded, at most once per 20 h."""
+    from broker.models import Setting
+
+    last = Setting.get("prices_fetched")
+    if not force and last and timezone.now() - datetime.fromisoformat(last) < PRICES_REFRESH_AFTER:
+        return {}
+    isins = set(Transaction.objects.filter(kind__in=_TRADES).exclude(instrument=None)
+                .values_list("instrument_id", flat=True))
+    exchanges = dict(Instrument.objects.filter(isin__in=isins).values_list("isin", "exchange"))
+    got = tr.fetch_price_history(client, exchanges)
+    with db_tx.atomic():
+        for isin, ex in got["exchanges"].items():
+            if ex and not exchanges.get(isin):
+                Instrument.objects.filter(isin=isin).update(exchange=ex[:20])
+        PricePoint.objects.bulk_create(
+            [PricePoint(series=isin, date=day, value=Decimal(f"{close:.6f}"))
+             for isin, points in got["closes"].items() for day, close in points],
+            batch_size=500, update_conflicts=True, unique_fields=["series", "date"],
+            update_fields=["value"],
+        )
+    Setting.put("prices_fetched", timezone.now().isoformat())
+    return {"instruments": len(exchanges), "priced": len(got["closes"])}
+
+
+def sync_history(client, *, full: bool, stage=lambda text: None) -> dict[str, Any]:
+    """Best effort, like the benchmarks: a refusal from TR must not fail the sync."""
+    from portfolio.analytics import ecb, history
+
+    out: dict[str, Any] = {}
+    steps = [
+        ("details", "Reading trade details", lambda: sync_details(client, full=full)),
+        ("prices", "Reading price history", lambda: sync_prices(client, force=full)),
+        ("ecb", "Reading ECB rates", lambda: ecb.refresh(_first_event_day())),
+    ]
+    for key, text, fn in steps:
+        stage(text)
+        try:
+            out[key] = fn()
+        except Exception as e:
+            log.info("%s failed: %s", key, e)
+            out[key] = {"error": str(e)[:200]}
+    stage("Rebuilding value history")
+    try:
+        rep = history.rebuild()
+        out["rebuilt_days"] = rep["days"]
+    except Exception as e:
+        log.exception("history rebuild failed")
+        out["rebuild_error"] = repr(e)[:200]
+    return out
+
+
+def _first_event_day():
+    first = Transaction.objects.order_by("timestamp").values_list("timestamp", flat=True).first()
+    return timezone.localdate(first) if first else timezone.localdate()
+
+
 def sync_documents(client, phone: str, run: SyncRun) -> dict[str, int]:
     from django.conf import settings
 
@@ -234,10 +329,12 @@ def sync_documents(client, phone: str, run: SyncRun) -> dict[str, int]:
 
 
 def reclassify() -> int:
-    """Re-run the mapping over stored raw payloads (after TR renames event types)."""
+    """Re-run the mapping over stored raw payloads and trade details (no network)."""
     changed = 0
     for t in Transaction.objects.iterator():
         f = mapping.transaction_fields(t.raw)
+        if t.detail is not None:
+            f |= mapping.parse_detail(t.detail)
         isin = f.pop("isin")
         new = {k: v for k, v in f.items() if k != "timestamp" and getattr(t, k) != v}
         if isin and t.instrument_id != isin and Instrument.objects.filter(isin=isin).exists():

@@ -1,0 +1,92 @@
+{% extends "ui/base.html" %}{% load fmt %}
+{% block title %}Projection{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Projection</h1>
+  <p>Your account's value since it opened, next to three scenarios running {{ a.horizon_years }} years from the opening{% if p %} to {{ p.end|date:"F Y" }}{% endif %}.</p>
+</div>
+
+{% if not p %}
+  <p class="empty">The value history is built during a sync. Run one to see the projection.</p>
+{% else %}
+<section>
+  <div class="stats" style="margin-top: 0; padding-top: 0; border-top: 0">
+    <div class="stat"><div class="label">Value today</div><div class="value">{{ p.actual_total|eur0 }}</div><div class="delta muted">{{ p.today|date:"j M Y" }}</div></div>
+    <div class="stat"><div class="label">Against baseline today</div><div class="value {{ p.vs_baseline|tone }}">{{ p.vs_baseline|signed_eur:0 }}</div><div class="delta muted">same decisions at {{ a.baseline_pct|floatformat:"-1" }} % a year</div></div>
+    <div class="stat"><div class="label">Your investments returned</div><div class="value">{% if p.implied_return is not None %}{{ p.implied_return|signed_pct }}{% else %}—{% endif %}</div><div class="delta muted">a year, money-weighted</div></div>
+    <div class="stat"><div class="label">Baseline in {{ p.end|date:"Y" }}</div><div class="value">{{ p.finals.baseline|eur0 }}</div><div class="delta muted">{% if real %}in today's euros{% else %}nominal{% endif %}</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Value and scenarios</h2>
+    <div class="ranges" id="proj-ranges">
+      <button type="button" data-days="0" data-ahead="0" aria-pressed="false">To date</button>
+      <button type="button" data-days="0" data-ahead="3653" aria-pressed="false">10Y</button>
+      <button type="button" data-days="0" aria-pressed="true">All</button>
+    </div>
+  </div>
+  <div class="filters" style="margin: -6px 0 18px">
+    <div class="ranges" role="group" aria-label="Units">
+      <a href="?{% if base == 'today' %}base=today{% endif %}"{% if not real %} aria-current="true"{% endif %}>Nominal</a>
+      <a href="?view=real{% if base == 'today' %}&amp;base=today{% endif %}"{% if real %} aria-current="true"{% endif %}>Today's euros</a>
+    </div>
+    <div class="ranges" role="group" aria-label="Scenarios start">
+      <a href="?{% if real %}view=real{% endif %}"{% if base == 'opening' %} aria-current="true"{% endif %}>From opening</a>
+      <a href="?base=today{% if real %}&amp;view=real{% endif %}"{% if base == 'today' %} aria-current="true"{% endif %}>From today's value</a>
+    </div>
+  </div>
+  <div class="legend" style="margin-bottom: 16px">
+    <span class="key"><i class="line" style="background: var(--ink)"></i>Actual</span>
+    {% for ln in lines %}<span class="key"><i class="line dashed" style="--k: var({{ ln.colour }})"></i>{{ ln.label }} <span class="num">{{ ln.rate|floatformat:"-1" }} %</span></span>{% endfor %}
+    <span class="key"><i class="swatch" style="background: var(--ink-3); opacity: .35"></i>Money paid in</span>
+  </div>
+  <div class="chart tall"><canvas data-chart="line" data-source="proj-data" aria-label="Account value since opening and three projected scenarios"></canvas></div>
+  {{ chart|json_script:"proj-data" }}
+  <p class="note">
+    {% if report.instruments %}Rebuilt from {{ report.trades }} trades in {{ report.instruments }} instruments: {{ report.exact }} with Trade Republic's share count, {{ report.estimated }} estimated from that day's price{% if report.at_cost %}, and {{ report.at_cost|length }} instrument{{ report.at_cost|length|pluralize }} without prices held at cost ({{ report.at_cost|join:", "|truncatechars:160 }}){% endif %}.{% endif %}
+    {% if report.cash_gap is not None %}On {{ report.checked_on }}, the rebuilt cash was {{ report.cash_gap|signed_eur:0 }} off Trade Republic's and the positions {{ report.depot_gap|signed_eur:0 }}.{% endif %}
+    {% if real %}Today's euros: euro-area inflation (HICP) up to its latest month, then {{ a.inflation_pct|floatformat:"-1" }} % a year.{% endif %}
+  </p>
+</section>
+
+<section>
+  <div class="section-head"><h2>Milestones</h2><span class="aside">{% if real %}today's euros{% else %}nominal{% endif %} · {% if base == 'today' %}from today's value{% else %}from opening{% endif %}</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>End of</th><th class="num">Money paid in</th>{% for ln in lines %}<th class="num"><span class="kind" style="--k: var({{ ln.colour }})">{{ ln.label }}</span></th>{% endfor %}</tr></thead>
+    <tbody>
+      <tr><td>Today <small class="muted">· actual {{ p.actual_total|eur0 }}</small></td><td class="num muted">{{ p.paid_today|eur0 }}</td>{% for ln in lines %}<td class="num muted">{% if base == 'opening' %}{{ ln.at_today|eur0 }}{% else %}{{ p.actual_total|eur0 }}{% endif %}</td>{% endfor %}</tr>
+      {% for m in milestones %}<tr><td>{{ m.label }}</td><td class="num muted">{{ m.paid_in|eur0 }}</td>{% for v in m.values %}<td class="num">{{ v|eur0 }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+<section>
+  <div class="section-head"><h2>Assumptions</h2></div>
+  {% if errors %}<div class="flash error">{% for e in errors.values %}{{ e }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>{% endif %}
+  <form method="post" class="form-grid">
+    {% csrf_token %}
+    {% for f in form %}
+      <label class="field">{{ f.label }}
+        <input type="text" inputmode="decimal" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}"{% if f.error %} aria-invalid="true"{% endif %}>
+      </label>
+    {% endfor %}
+    <div class="form-actions"><button class="btn" type="submit">Save</button></div>
+  </form>
+  <p class="note">Leave the cash rate empty to follow the ECB deposit facility rate{% if dfr %}, {{ dfr.1|floatformat:"-2" }} % since {{ dfr.0|date:"j M Y" }}{% endif %}. Returns and contributions are before tax.</p>
+</section>
+
+<section>
+  <div class="section-head"><h2>How this works</h2></div>
+  <dl class="facts">
+    <dt>Actual</dt><dd>Cash plus positions on every day since the account opened. Rebuilt from your trades: shares from each trade's detail (or estimated from the amount and that day's price) times Trade Republic's closing prices. Days with a sync use Trade Republic's own figures.</dd>
+    <dt>Scenarios up to today</dt><dd>Your own deposits, withdrawals, card spending, buys and sells, replayed with the invested money earning the scenario's return. Cash keeps the interest you actually received. The gap to the actual line is how your investments did against that return.</dd>
+    <dt>After today</dt><dd>The monthly contribution is invested each month and raised by the yearly increase every twelve months. Invested money earns the scenario's return; the cash left earns the cash rate.</dd>
+    <dt>From today's value</dt><dd>Starts the three scenarios from your real cash and positions today instead of the replay.</dd>
+    <dt>Your investments returned</dt><dd>The single annual return on invested money that makes the replay land exactly on today's value.</dd>
+    <dt>Today's euros</dt><dd>Every amount deflated to today's prices with the euro-area HICP, then with the inflation assumption after its latest month.</dd>
+  </dl>
+</section>
+{% endblock %}

@@ -93,3 +93,25 @@ def test_csrf_failure_explains_secure_cookie_over_http(settings):
     assert r.status_code == 403
     assert b"CSRF cookie not set" in r.content
     assert b"https://" in r.content
+
+
+@pytest.mark.django_db
+def test_url_prefix_behind_proxy(client, settings, request):
+    """nginx serves /trdash/ and strips the prefix; generated URLs keep it."""
+    from django.urls import set_script_prefix
+
+    settings.FORCE_SCRIPT_NAME = "/trdash"
+    settings.STATIC_URL = "/trdash/static/"
+    settings.TRDASH_PASSWORD = "s3cret"
+    # WSGIHandler does this per request; the test client doesn't.
+    set_script_prefix("/trdash/")
+    request.addfinalizer(lambda: set_script_prefix("/"))
+    r = client.get("/activity/")
+    assert r["Location"] == "/trdash/login/?next=%2Ftrdash%2Factivity%2F"
+    assert client.get("/healthz").status_code == 200
+    assert client.get("/static/ui/css/app.css").status_code == 200
+    r = client.post("/login/", {"password": "s3cret", "next": "/trdash/activity/"})
+    assert r["Location"] == "/trdash/activity/"
+    page = client.get("/settings/").content.decode()
+    assert 'data-url="/trdash/sync/"' in page
+    assert "/trdash/static/ui/js/app.js" in page

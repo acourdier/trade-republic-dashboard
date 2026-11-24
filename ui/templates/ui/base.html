@@ -44,7 +44,7 @@
     {% if gated %}<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="linkish" type="submit">Sign out</button></form>{% endif %}
   </footer>
 
-  <dialog class="sync-dialog" id="sync-dialog" aria-live="polite"{% if active_run %} data-active="{{ active_run.pk }}"{% endif %}>
+  <dialog class="sync-dialog" id="sync-dialog" aria-live="polite" data-url="{% url 'sync_start' %}"{% if active_run %} data-active="{{ active_run.pk }}"{% endif %}>
     {% csrf_token %}
     <h3 class="s-title"></h3>
     <p class="s-text"></p>

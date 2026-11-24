@@ -64,6 +64,14 @@ if BEHIND_PROXY:
     USE_X_FORWARDED_HOST = True
     SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
 
+# Sub-path the proxy mounts the app under, e.g. /trdash when nginx serves
+# https://host/trdash/ and strips the prefix before proxying. Links, redirects,
+# static URLs and cookies then carry the prefix; the app still answers on /.
+URL_PREFIX = "/" + os.environ.get("TRDASH_URL_PREFIX", "").strip("/")
+if URL_PREFIX != "/":
+    FORCE_SCRIPT_NAME = URL_PREFIX
+    SESSION_COOKIE_PATH = CSRF_COOKIE_PATH = URL_PREFIX + "/"
+
 # Password gate. Unset = open (fine on loopback); always set it on a server.
 TRDASH_PASSWORD = os.environ.get("TRDASH_PASSWORD", "")
 SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"  # no DB table
@@ -130,7 +138,9 @@ TIME_ZONE = os.environ.get("TRDASH_TIME_ZONE") or "Europe/Berlin"
 USE_I18N = False
 USE_TZ = True
 
-STATIC_URL = "static/"
+# Absolute, so it doesn't depend on which script prefix was active when
+# Django first read (and cached) it.
+STATIC_URL = URL_PREFIX.rstrip("/") + "/static/"
 
 # Trade Republic web-frontend build sent as X-TR-App-Version during login.
 # Bump when TR redeploys app.traderepublic.com (see broker/tr.py).

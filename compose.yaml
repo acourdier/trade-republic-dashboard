@@ -19,3 +19,12 @@ services:
     volumes:
       - ./data:/data
     shm_size: 256mb # Chromium, briefly, at each Trade Republic login
+    networks:
+      nextcloud-pi_admiralty_net:
+        aliases:
+            - trdash.trdash.com
+
+networks:
+  # Shared with the nextcloud-pi nginx, which proxies /trdash/ to this container.
+  nextcloud-pi_admiralty_net:
+    external: true

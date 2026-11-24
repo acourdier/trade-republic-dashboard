@@ -7,6 +7,7 @@
   if (!dialog) return;
   const $ = (sel) => dialog.querySelector(sel);
   const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1] || "";
+  const SYNC_URL = dialog.dataset.url; // carries the proxy sub-path, if any
   const APPROVAL_SEC = 120;
   let timer = null;
   let approvalStarted = null;
@@ -65,7 +66,7 @@
   async function poll(id) {
     clearTimeout(timer);
     try {
-      const r = await fetch(`/sync/${id}/`, { headers: { Accept: "application/json" } });
+      const r = await fetch(`${SYNC_URL}${id}/`, { headers: { Accept: "application/json" } });
       const run = await r.json();
       if (r.status === 401) { show("failed", { title: "Signed out", text: run.message }); return; }
       if (!render(run)) timer = setTimeout(() => poll(id), 1000);
@@ -77,7 +78,7 @@
   async function start(mode) {
     show("running", { title: "Syncing", text: "Starting…" });
     const body = new URLSearchParams({ mode });
-    const r = await fetch("/sync/", {
+    const r = await fetch(SYNC_URL, {
       method: "POST",
       headers: { "X-CSRFToken": csrf(), Accept: "application/json" },
       body,

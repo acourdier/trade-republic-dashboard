@@ -43,7 +43,7 @@ class PasswordGate:
         self.get_response = get_response
 
     def __call__(self, request):
-        if is_unlocked(request) or request.path.startswith(OPEN_PREFIXES):
+        if is_unlocked(request) or request.path_info.startswith(OPEN_PREFIXES):
             return self.get_response(request)
         if request.headers.get("Accept", "").startswith("application/json"):
             return JsonResponse({"message": "Signed out. Reload the page."}, status=401)
